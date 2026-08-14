@@ -13,7 +13,7 @@
   "bindgen": "",
   "rust_build": true,
   "disk_cleanup": true,
-  "hmbird": false,
+  "hmbird": true,
   "susfs": true,
   "opt": true,
   "ds": true,

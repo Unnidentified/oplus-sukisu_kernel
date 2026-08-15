@@ -195,7 +195,13 @@ These amazing people help make this project possible! ❤️
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=sakfi/OP_KSUN_FS&type=date&legend=top-left&sealed_token=P2zI1CsCyzCC28LtHa0EH7c5ty10V8zKIH5tSCDr9lD4l715sEo2KDk28OzO19Vp0FLTW1AIumRCK3DCB9EEv5xlitokIwSzRKPlKmzuBlWzOWIQZdL4Tw)](https://www.star-history.com/?repos=sakfi%2FOP_KSUN_FS&type=date&legend=top-left)
+<a href="https://www.star-history.com/?type=date&repos=sakfi%2FOP_KSUN_FS">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=sakfi/OP_KSUN_FS&type=date&theme=dark&legend=top-left&sealed_token=OqU8hyY-HqHndwkuxd2blk0WdhhDe3ZkdTTdzboTaSuVsHGw5kHTBOzIbAL5QD1oF7AVbYqsAx4Or54KGWQAb_oFrXwxZwX8-KwET_R6670813YeSA-i_F-NIqtYnXz73JnL2tRYWBaSXGGog1iJrZlGRyfo5bfTJ1Y8_OdlYIplGNpnlDr4DbcK4ouq" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=sakfi/OP_KSUN_FS&type=date&legend=top-left&sealed_token=OqU8hyY-HqHndwkuxd2blk0WdhhDe3ZkdTTdzboTaSuVsHGw5kHTBOzIbAL5QD1oF7AVbYqsAx4Or54KGWQAb_oFrXwxZwX8-KwET_R6670813YeSA-i_F-NIqtYnXz73JnL2tRYWBaSXGGog1iJrZlGRyfo5bfTJ1Y8_OdlYIplGNpnlDr4DbcK4ouq" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=sakfi/OP_KSUN_FS&type=date&legend=top-left&sealed_token=OqU8hyY-HqHndwkuxd2blk0WdhhDe3ZkdTTdzboTaSuVsHGw5kHTBOzIbAL5QD1oF7AVbYqsAx4Or54KGWQAb_oFrXwxZwX8-KwET_R6670813YeSA-i_F-NIqtYnXz73JnL2tRYWBaSXGGog1iJrZlGRyfo5bfTJ1Y8_OdlYIplGNpnlDr4DbcK4ouq" />
+ </picture>
+</a>
 
 <br>
 

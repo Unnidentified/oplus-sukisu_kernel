@@ -70,6 +70,7 @@ on:
           - OP13T
           - OP13r
           - OP15
+          - OP15-COS17
           - OP15r
           - OP15T
           - OP-TURBO-6

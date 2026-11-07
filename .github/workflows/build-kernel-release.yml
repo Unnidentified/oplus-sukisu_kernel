@@ -70,6 +70,7 @@ on:
           - OP13T
           - OP13r
           - OP15
+          - OP15-COS17
           - OP15r
           - OP15T
           - OP-TURBO-6
@@ -542,7 +543,7 @@ jobs:
           
           merged_matrix=$(echo "$merged_matrix" | jq \
             --argjson hashes "$susfs_hashes_json" \
-            '[.[] | . + {susfs_resolved_hash: ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")}]')
+            '[.[] | . + {susfs_resolved_hash: (if (.susfs_hash? // null) != null then .susfs_hash else ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown") end)}]')
           
           merged_matrix=$(echo "$merged_matrix" | jq '
             sort_by(
@@ -717,7 +718,7 @@ jobs:
           
           merged_matrix=$(echo "$merged_matrix" | jq \
             --argjson hashes "$susfs_hashes_json" \
-            '[.[] | . + {susfs_resolved_hash: ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")}]')
+            '[.[] | . + {susfs_resolved_hash: (if (.susfs_hash? // null) != null then .susfs_hash else ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown") end)}]')
           
           # Recalculate wrapped with updated matrix and write output
           wrapped=$(jq -c '{ include: . }' <<< "$merged_matrix")

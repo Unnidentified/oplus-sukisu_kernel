@@ -1469,7 +1469,17 @@ runs:
           fi
         fi
         
+        # GNU patch exits 1 when any hunk rejects; under set -e that would kill
+        # the step before the reject-fix below can run. Tolerate rc=1 (rejects
+        # are handled right after), abort only on rc>=2 (serious failure).
+        set +e
         patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch"
+        susfs_patch_rc=$?
+        set -e
+        if [ "$susfs_patch_rc" -gt 1 ]; then
+          echo "::error::SUSFS kernel patch failed seriously (rc=$susfs_patch_rc)"
+          exit "$susfs_patch_rc"
+        fi
         
         # GKI android16-6.12 (6.12.30+) refactored show_smaps_rollup(), so the two
         # SUS_MAP hunks for fs/proc/task_mmu.c reject on those bases. Apply the

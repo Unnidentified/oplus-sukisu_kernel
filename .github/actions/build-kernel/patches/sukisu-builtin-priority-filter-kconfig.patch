@@ -1,0 +1,16 @@
+diff --git a/kernel/Kconfig b/kernel/Kconfig
+index db57137..bb67381 100644
+--- a/kernel/Kconfig
++++ b/kernel/Kconfig
+@@ -113,6 +113,11 @@ config KSU_SUSFS_OPEN_REDIRECT
+ 	  - OPEN_REDIRECT does not bypass some detections by default, but users can work with SUS_KSTAT to bypass them.
+ 	  - Effective only on processes with pre-defined uid scheme.
+ 
++config KSU_SUSFS_PRIORITY_UID_FILTER
++	bool "Enable priority uid filter (getpriority uid hiding)"
++	depends on KSU_SUSFS
++	default n
++
+ config KSU_SUSFS_SUS_MAP
+ 	bool "Enable to hide some mmapped real file from different proc maps interfaces"
+ 	depends on KSU_SUSFS

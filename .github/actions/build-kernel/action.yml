@@ -1070,7 +1070,7 @@ runs:
           # - priority-filter-stub: guards the priority_uid_filter calls behind
           # CMD_SUSFS_SET_PRIORITY_UID_FILTER, which only exists in susfs4ksu
           # commits rebased onto android16-6.12.92 (those reject on this base)
-          for p in sukisu-builtin-lsm-id sukisu-builtin-priority-filter-stub; do
+          for p in sukisu-builtin-lsm-id sukisu-builtin-priority-filter-stub sukisu-builtin-priority-filter-kconfig; do
             pf="${GITHUB_ACTION_PATH}/patches/${p}.patch"
             if patch -p1 --dry-run --forward -d "$(pwd)/KernelSU" < "$pf" >/dev/null 2>&1; then
               patch -p1 --forward -d "$(pwd)/KernelSU" < "$pf"
@@ -1603,6 +1603,20 @@ runs:
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$config"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$config"
         done
+        
+        # susfs4ksu from the android16-6.12.92 rebase onward guards the
+        # priority_uid_filter declarations (susfs.h) and definitions (susfs.c)
+        # behind CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER, while SukiSU calls them
+        # whenever CMD_SUSFS_SET_PRIORITY_UID_FILTER exists in susfs_def.h.
+        # Enable the config exactly when that CMD is present, so declarations,
+        # definitions and calls stay consistent. Older susfs pins have no such
+        # CMD and are left unchanged (their declarations come from the overlay).
+        if grep -q 'CMD_SUSFS_SET_PRIORITY_UID_FILTER' "$COMMON_KERNEL_FOLDER/include/linux/susfs_def.h" 2>/dev/null; then
+          for config in $(find "$COMMON_KERNEL_FOLDER/arch/arm64/configs" -type f -name "*defconfig"); do
+            echo "CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=y" >> "$config"
+          done
+          echo " Enabled CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER (susfs_def.h provides CMD_SUSFS_SET_PRIORITY_UID_FILTER)"
+        fi
         
         echo "::endgroup::"
 

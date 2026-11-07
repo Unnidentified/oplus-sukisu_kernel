@@ -1,5 +1,5 @@
-name: 'Build OnePlus Kernel with KernelSU Next'
-description: 'Build OnePlus Kernel with KernelSU Next'
+name: 'Build OnePlus Kernel with SukiSU-Ultra'
+description: 'Build OnePlus Kernel with SukiSU-Ultra'
 
 inputs:
   op_config_json:
@@ -7,14 +7,14 @@ inputs:
     required: true
     type: string
   ksu_type:
-    description: 'Select KSU Type'
+    description: 'Select root type (KSUN = SukiSU-Ultra, KSU = KernelSU)'
     required: true
     type: choice
     options:
       - KSUN
       - KSU
   ksu_branch_or_hash:
-    description: 'KSU branch or commit hash (empty = auto-detect by ksu_type)'
+    description: 'Root branch or commit hash (empty = auto-detect by ksu_type)'
     required: false
     type: string
     default: ""
@@ -47,7 +47,7 @@ inputs:
     description: 'GitHub Token'
     required: true
   ksu_mode:
-    description: 'KernelSU integration mode: lkm or builtin'
+    description: 'SukiSU-Ultra integration mode: lkm or builtin'
     required: false
     type: string
     default: 'builtin'
@@ -57,13 +57,13 @@ outputs:
     description: 'Full kernel version string'
     value: ${{ steps.save_metadata.outputs.kernel_version }}
   ksu_version:
-    description: 'KernelSU version number'
+    description: 'SukiSU-Ultra version number'
     value: ${{ steps.save_metadata.outputs.ksu_version }}
   ksu_type:
-    description: 'KernelSU Variant'
+    description: 'SukiSU-Ultra variant'
     value: ${{ steps.save_metadata.outputs.ksu_type }}
   ksu_mode:
-    description: 'KernelSU Mode used'
+    description: 'SukiSU-Ultra mode used'
     value: ${{ env.KSUMODE }}
   susfs_version:
     description: 'SUSFS version string'
@@ -318,7 +318,7 @@ runs:
           errors+=("Input 'ksu_mode' must be 'lkm' or 'builtin'. Got: '$ksu_mode'")
         fi
         if [ "${{ env.OP_SUSFS }}" = "true" ] && [ "$ksu_mode" = "lkm" ]; then
-          echo "::warning::SUSFS requires in-tree KernelSU compilation for supercall hooks. Automatically switching ksu_mode to 'builtin'..."
+          echo "::warning::SUSFS requires in-tree SukiSU-Ultra compilation for supercall hooks. Automatically switching ksu_mode to 'builtin'..."
           ksu_mode="builtin"
         fi
         echo "KSUMODE=$ksu_mode" >> "$GITHUB_ENV"
@@ -331,7 +331,7 @@ runs:
           echo "::error::Input validation failed. See logs for details."
           exit 1
         else
-          echo " Input validation passed (KernelSU Mode: $ksu_mode)"
+          echo " Input validation passed (SukiSU-Ultra Mode: $ksu_mode)"
         fi
         echo "::endgroup::"
 
@@ -1183,8 +1183,8 @@ runs:
         echo "KSU" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
         echo "$KSU_VERSION" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-        echo "KernelSU Version: $KSU_VERSION"
-        echo " KernelSU added (commit: ${KSU_COMMIT_SHA:0:8})"
+        echo "SukiSU-Ultra Version: $KSU_VERSION"
+        echo " SukiSU-Ultra added (commit: ${KSU_COMMIT_SHA:0:8})"
         echo "::endgroup::"
 
     - name: SUSFS patch pre-check
@@ -1223,7 +1223,7 @@ runs:
         set -euo pipefail
         echo "::group::Apply SUSFS patches"
         if [ "${KSUMODE:-lkm}" = "lkm" ]; then
-          echo " LKM Mode Active: GKI kernel will be patched with SUSFS hooks, while KernelSU is loaded as an LKM module."
+          echo " LKM Mode Active: GKI kernel will be patched with SUSFS hooks, while SukiSU-Ultra is loaded as an LKM module."
         fi
 
         cd "$KERNEL_PLATFORM_FOLDER"
@@ -1399,7 +1399,7 @@ runs:
             ;;
         esac
         else
-          echo " LKM mode: In-tree KernelSU SUSFS patch skipped (modular KSUN driver used)."
+          echo " LKM mode: In-tree SukiSU-Ultra SUSFS patch skipped (modular KSUN driver used)."
         fi
         
         cd "$COMMON_KERNEL_FOLDER"
@@ -1577,7 +1577,7 @@ runs:
           fi
         done
         if [ "$rej_count" -gt 0 ]; then
-          echo "::error::One or more SUSFS / KernelSU patches created .rej files. Aborting build."
+          echo "::error::One or more SUSFS / SukiSU-Ultra patches created .rej files. Aborting build."
           exit 1
         fi
         
@@ -2834,11 +2834,11 @@ runs:
           echo "| **OS Version** | ${{ env.OP_OS_VERSION }} |"
           echo "| **Kernel Version** | ${{ steps.save_metadata.outputs.kernel_version }} |"
           echo "| **Kernel Uname** | \`${{ env.KERNEL_UNAME }}\` |"
-          echo "| **KernelSU Mode** | \`${KSUMODE:-lkm}\` |"
+          echo "| **SukiSU-Ultra Mode** | \`${KSUMODE:-lkm}\` |"
           echo "| **Build User** | ${{ env.BUILD_USER }} |"
           echo "| **Build Host** | ${{ env.BUILD_HOST }} |"
           if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-            echo "| **KSUN Version** | ${KSUVER:-unknown} |"
+            echo "| **SukiSU-Ultra Version** | ${KSUVER:-unknown} |"
           else
             echo "| **KSU Version** | ${KSUVER:-unknown} |"
           fi

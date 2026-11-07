@@ -38,7 +38,7 @@ Zip names follow `SKF_{MODEL}_{OS}_{KERNEL}_{KSU_TYPE}_{VERSION}_SuSFS[_LKM].zip
 
 | Area | Feature | Notes |
 |---|---|---|
-| Root | **SukiSU-Ultra** (`builtin` branch) | KernelSU-Next fork with SUSFS hooks already integrated — no extra KSU patching needed. Manager APK from [SukiSU-Ultra releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases). The build carries small compat patches (6.7+ `struct lsm_id` LSM registration, SUSFS priority-filter guards) under `.github/actions/build-kernel/patches/` |
+| Root | **SukiSU-Ultra** (`builtin` branch) | Fork of KernelSU-Next with SUSFS hooks already integrated — no extra KSU patching needed. Manager APK from [SukiSU-Ultra releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases). The build carries small compat patches (6.7+ `struct lsm_id` LSM registration, SUSFS priority-filter guards) under `.github/actions/build-kernel/patches/` |
 | Stealth | **SUSFS** | Magic mount, `SUS_PATH` / `SUS_MOUNT` / `SUS_KSTAT` / `SUS_MAP`, uname & cmdline spoofing, open redirect. Branch auto-synced from [susfs4ksu](https://gitlab.com/simonpunk/susfs4ksu) |
 | Gaming | **NTSync** | NT synchronization primitives for Windows emulators (Winlator, Box64) |
 | Network | **BBR**, **WireGuard**, TTL / IP Set | Congestion control, in-kernel VPN, packet tools |

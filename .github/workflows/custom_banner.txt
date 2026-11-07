@@ -39,7 +39,7 @@ sleep 0.4
 ui_print " - Original Repository by fatalcoder24 (github)"
 sleep 0.4
 
-ui_print " - KernelSU-Next by rifsxd (github)"
+ui_print " - SukiSU-Ultra (KernelSU-Next fork, github)"
 sleep 0.4
 
 ui_print " - SUSFS by simonpunk (gitlab) & sidex15 (github)"

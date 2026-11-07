@@ -62,7 +62,7 @@ jobs:
 
           # ── Extract Features from the release body ──
           # The release body has a " Features & Capabilities" table with rows like:
-          # | **KernelSU-Next** | Next-generation kernel-level root solution |
+          # | **SukiSU-Ultra** | Kernel-level root solution (KernelSU-Next fork) |
           FEATURES_RAW=$(echo "$REL_BODY" | awk '
             /^## Features/ { flag=1; next }
             flag && /^\|:---/ { next }
@@ -119,7 +119,7 @@ jobs:
             OPTIMIZATION=$(echo "$OPTIMIZATION" | sed 's/^, //')
 
             FEATURES_BLOCK="Features:
-          - Integrated: KernelSU-Next & SUSFS
+          - Integrated: SukiSU-Ultra & SUSFS
           - Optimized for performance and battery life (${OPTIMIZATION:-LTO, Optimization, Battery})
           - Network features (${NETWORK:-BBRv3, TTL Target Support, WireGuard})
           - Advanced features (${ADVANCED:-Droidspaces, NTSync, HMBIRD SCX, TMPFS XATTR})
@@ -127,7 +127,7 @@ jobs:
           else
             # Fallback: hardcoded features if extraction fails
             FEATURES_BLOCK="Features:
-          - Integrated: KernelSU-Next & SUSFS
+          - Integrated: SukiSU-Ultra & SUSFS
           - Optimized for performance and battery life (LTO, Optimization, Battery)
           - Network features (BBRv3, TTL Target Support, WireGuard)
           - Advanced features (Droidspaces, NTSync, HMBIRD SCX, TMPFS XATTR)
@@ -159,7 +159,7 @@ jobs:
           $CLEAN_CHANGELOG</code></pre>
 
           <b>Important:</b>
-          - Flash via Kernel Flasher (for KernelSU/Next) or FKM.
+          - Flash via Kernel Flasher (for SukiSU-Ultra/KernelSU) or FKM.
           - If you run into issues, please provide logs in the GitHub repository.
           - Support the development by leaving a on GitHub!
 

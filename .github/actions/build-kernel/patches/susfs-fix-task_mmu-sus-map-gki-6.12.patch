@@ -1,0 +1,18 @@
+diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
+index 57b0982e4..a9c346a9a 100644
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -1453,6 +1453,13 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+ 			if (!vma)
+ 				break;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++			if (vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))) {
++				last_vma_end = vma->vm_end;
++				continue;
++			}
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++
+ 			/* Case 1 and 2 above */
+ 			if (vma->vm_start >= last_vma_end) {
+ 				smap_gather_stats(vma, &mss, 0);

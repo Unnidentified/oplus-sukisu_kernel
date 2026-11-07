@@ -1471,6 +1471,18 @@ runs:
         
         patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch"
         
+        # GKI android16-6.12 (6.12.30+) refactored show_smaps_rollup(), so the two
+        # SUS_MAP hunks for fs/proc/task_mmu.c reject on those bases. Apply the
+        # adapted fix only when the original hunks actually rejected.
+        if find "$COMMON_KERNEL_FOLDER" -name 'task_mmu.c.rej' -print | grep -q .; then
+          task_mmu_fix="${GITHUB_ACTION_PATH}/patches/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
+          if [ -f "$task_mmu_fix" ]; then
+            echo "Applying adapted SUSFS fix for fs/proc/task_mmu.c (refactored show_smaps_rollup)"
+            patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$task_mmu_fix"
+            rm -f "$COMMON_KERNEL_FOLDER/fs/proc/task_mmu.c.rej"
+          fi
+        fi
+        
         # SUSFS's OPEN_REDIRECT code unconditionally calls VMA_PAD_START(), which
         # only exists on GKI branches that carry Google's page-size-migration
         # feature (added to each android version's kernel/common branch at a

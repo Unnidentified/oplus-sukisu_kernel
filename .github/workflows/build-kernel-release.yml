@@ -103,12 +103,12 @@ on:
           - android16-6.12
         default: All
       ksu_options:
-        description: 'Enter KernelSU build json'
+        description: 'Enter SukiSU-Ultra build json'
         required: true
         type: string
         default: '[{"type":"ksun","hash":"builtin"}]'
       ksu_mode:
-        description: 'KernelSU Integration Mode (builtin = In-tree with full SUSFS support [Recommended], lkm = Modular LKM)'
+        description: 'SukiSU-Ultra Integration Mode (builtin = In-tree with full SUSFS support [Recommended], lkm = Modular LKM)'
         required: true
         type: choice
         options:
@@ -1035,7 +1035,7 @@ jobs:
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SUSFS_BASE_VERSION: ${{ needs.set-op-model.outputs.susfs_base_version }}
-      RELEASE_NAME: 'OnePlus Kernels With KernelSU Next & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }}'
+      RELEASE_NAME: 'OnePlus Kernels With SukiSU-Ultra & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }}'
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -1256,8 +1256,8 @@ jobs:
           
           | Component | Version/Setting |
           |-----------|----------------|
-          | **KernelSU Next Branch** | \`${ksu_ref} (${ksu_resolved_hash:0:7})\` |
-          | **KernelSU Next Version** | \`$ksu_ver_global\` |
+          | **SukiSU-Ultra Branch** | \`${ksu_ref} (${ksu_resolved_hash:0:7})\` |
+          | **SukiSU-Ultra Version** | \`$ksu_ver_global\` |
           | **SUSFS Version** | \`$SUSFS_BASE_VERSION\` |
           | **Optimization Level** | \`$OPTIMIZE_LEVEL\` |
           | **Clean Build** | $( [ "$CLEAN_BUILD" = "true" ] && echo " Yes" || echo " No" ) |
@@ -1333,7 +1333,7 @@ jobs:
           
           - Unlocked bootloader.
           - Backup your current boot image.
-          - Have root access using Magisk / KernelSU (Any forks) / Apatch.
+          - Have root access using Magisk / KernelSU / SukiSU-Ultra (any fork) / Apatch.
           </details>
           
           ### Via Kernel Flasher

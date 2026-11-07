@@ -62,6 +62,8 @@ Per-device configs live in [`configs/`](configs), kernel source manifests in [`m
 
 Everything is built from [OnePlus's official kernel sources](https://github.com/OnePlusOSS/), so the zips target stock ROMs. Don't flash a zip across a major OTA (e.g. A15 to A16) without checking — the KMI has to match.
 
+For ColorOS 17 (Android 17) on the OnePlus 15, build with `op_model: OP15-COS17` (keep `android_version_filter: A16`, `kernel_version_filter: android16-6.12`). That profile (`configs/a16/OP15-COS17.json`) compiles the AOSP GKI `android16-6.12.69` common with OnePlus's sm8850 modules/devicetree, giving KMI `android16-6` — the same generation as ColorOS 17's stock `6.12.x-android16-6` kernel — so the zip boots on ColorOS 17. The `OP15` profile stays on OnePlus's 16.0.0 common (`6.12.23-android16-5`) and remains the one for ColorOS/OxygenOS 16.
+
 ---
 
 ## Flashing

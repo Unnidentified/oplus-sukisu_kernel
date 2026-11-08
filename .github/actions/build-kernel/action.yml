@@ -1688,7 +1688,14 @@ runs:
         # OnePlus vendor trees ship a 750000ULL base_slice that rejects mid-hunk;
         # GKI canon is 700000ULL and BORE overrides base_slice anyway (dead code).
         sed -i 's/750000ULL/700000ULL/g; s/0\\.75 msec/0.70 msec/g' kernel/sched/fair.c
+        set +e
         patch -p1 --ignore-whitespace -F3 < "$PATCH"
+        patch_rc=$?
+        set -e
+        if [ "$patch_rc" -gt 1 ]; then
+          echo "::error::BORE patch failed seriously (rc=$patch_rc)"
+          exit "$patch_rc"
+        fi
         left="$(find . -name '*.rej' | sort)"
         if [ -n "$left" ]; then
           echo "::error::BORE left rejects:"
@@ -2145,7 +2152,14 @@ runs:
         if [ -f block/adios.c ]; then
           echo "   ADIOS source already exists, skipping patch"
         else
+          set +e
           patch -p1 --ignore-whitespace -F3 < "$PATCH"
+          patch_rc=$?
+          set -e
+          if [ "$patch_rc" -gt 1 ]; then
+            echo "::error::ADIOS patch failed seriously (rc=$patch_rc)"
+            exit "$patch_rc"
+          fi
           left="$(find . -name '*.rej' | sort)"
           if [ -n "$left" ]; then
             echo "::error::ADIOS left rejects:"; echo "$left" | sed 's/^/     /'; exit 1

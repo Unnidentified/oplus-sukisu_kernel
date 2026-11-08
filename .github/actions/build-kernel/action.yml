@@ -2237,6 +2237,40 @@ runs:
         echo "   DAMON enabled (reclaim + lru_sort built in, dormant until started)"
         echo "::endgroup::"
 
+    - name: Add baseline hardening
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Add baseline hardening"
+        # Both symbols landed in 6.6; neither exists on 6.1 or 5.15, so writing
+        # them there would be a no-op that olddefconfig silently drops.
+        if [ "$(printf '%s\n' "$KERNEL_VER" "6.6" | sort -V | tail -n1)" != "$KERNEL_VER" ]; then
+          echo "   no baseline hardening for $KERNEL_VER (symbols are 6.6+)"
+          echo "::endgroup::"
+          exit 0
+        fi
+        # LIST_HARDENED: integrity checks in list_add/list_del. Near-zero cost,
+        # and it turns a silent corruption into an immediate, attributable crash.
+        #
+        # RANDOM_KMALLOC_CACHES: several copies of each kmalloc cache, picked by
+        # code address, so a heap overflow has to guess which one to spray.
+        # Roughly 1%.
+        #
+        # Deliberately not enabled:
+        #   INIT_ON_FREE_DEFAULT_ON  zeroes every freed object. INIT_ON_ALLOC is
+        #                            already on and covers the main info-leak
+        #                            path; this doubles the zeroing for a
+        #                            smaller marginal gain.
+        #   ARM64_MTE                needs hardware support and a userspace that
+        #                            tolerates tag checks. Enabling it blind
+        #                            crashes things.
+        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_LIST_HARDENED=y
+        CONFIG_RANDOM_KMALLOC_CACHES=y
+        EOF
+        echo "   LIST_HARDENED + RANDOM_KMALLOC_CACHES enabled"
+        echo "::endgroup::"
+
     - name: Add Droidspaces support
       shell: bash
       if: ${{ env.OP_DS == 'true' }}
@@ -2730,6 +2764,19 @@ runs:
         audit "${OP_ADIOS:-false}"   MQ_IOSCHED_ADIOS   "ADIOS I/O scheduler" 6.12
         audit "${OP_DAMON:-false}"   DAMON              "DAMON"
         audit "${OP_AUTOFDO:-false}" AUTOFDO_CLANG      "AutoFDO"             6.12
+
+        # Baseline hardening is unconditional on 6.6+, so there is no config
+        # flag to key off — check it directly.
+        if [ "$(printf '%s\n' "$KERNEL_VER" "6.6" | sort -V | tail -n1)" = "$KERNEL_VER" ]; then
+          for sym in LIST_HARDENED RANDOM_KMALLOC_CACHES; do
+            if grep -q "^CONFIG_${sym}=y" "$OUT/.config"; then
+              echo "   OK      hardening: CONFIG_${sym}=y"
+            else
+              echo "::error::Baseline hardening symbol missing from the resolved config: CONFIG_${sym}"
+              audit_failed=1
+            fi
+          done
+        fi
         if [ "$audit_failed" -ne 0 ]; then
           echo "::error::One or more requested features did not survive olddefconfig. Aborting rather than shipping a kernel that silently lacks them."
           exit 1

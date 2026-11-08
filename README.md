@@ -57,6 +57,7 @@ Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}.zip` (LKM builds add 
 | Network | **BBR**, **BBR3**, **WireGuard**, TTL / IP Set | Congestion control, in-kernel VPN, packet tools |
 | Containers | **Droidspaces** | SYSVIPC support for portable Linux containers |
 | Misc | HMBIRD SCX, TMPFS xattr, Unicode bypass fix | Toggled per device in `configs/` |
+| Hardening | **LIST_HARDENED**, **RANDOM_KMALLOC_CACHES** | Baseline, on for every 6.6+ profile. See [Baseline hardening](#baseline-hardening) |
 
 ---
 
@@ -137,6 +138,22 @@ The upstream set is larger. The rest is deliberately not applied:
 
 Adding a name to the allowlist means reviewing the patch first. The external repo is cloned from a moving branch, so the commit it resolved to is recorded as `features.patchset_commit` in `build-info.json`.
 
+### Baseline hardening
+
+Two symbols are enabled on every profile from 6.6 up, with no config flag — they are cheap enough that "should this kernel be secure" is not a per-device question:
+
+| Symbol | What it does | Cost |
+|---|---|---|
+| `CONFIG_LIST_HARDENED` | Integrity checks in `list_add`/`list_del`. Turns a silent corruption into an immediate, attributable crash | Near zero |
+| `CONFIG_RANDOM_KMALLOC_CACHES` | Several copies of each kmalloc cache, picked by code address, so a heap overflow has to guess which one to spray | ~1% |
+
+Neither symbol exists on 6.1 or 5.15, so the step skips those rather than writing a name `olddefconfig` would drop.
+
+Two more are deliberately **not** enabled:
+
+- **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** zeroes every freed object. `INIT_ON_ALLOC_DEFAULT_ON` is already on and covers the main info-leak path; this doubles the zeroing for a smaller marginal gain.
+- **`CONFIG_ARM64_MTE`** needs hardware support and a userspace that tolerates tag checks. Enabling it blind crashes things.
+
 ### O2 vs O3
 
 `optimize_level: O3` works, but not the way the code implies. `CC_OPTIMIZE_FOR_PERFORMANCE_O3` was **removed in Linux 6.0** — it only ever applied to ARC, and Linus rejected re-adding it without substantial justification. On 6.1+ the symbol does not exist, so writing it is a no-op that `olddefconfig` drops. What actually reaches the compiler is `KCFLAGS_EXTRA="-O3"`, appended after the kernel's own `-O2`.
@@ -213,8 +230,6 @@ Things a current Android kernel normally has that this one does not. Listed so t
 
 | Item | Why it matters | Blocker |
 |---|---|---|
-| **`CONFIG_RANDOM_KMALLOC_CACHES`** | Randomises which kmalloc cache an allocation lands in, so a heap overflow has to guess. Upstream is renaming this to `KMALLOC_PARTITION_CACHES` | None; ~1% cost, needs measuring |
-| **`CONFIG_LIST_HARDENED`** | Catches linked-list corruption at the point it happens instead of at the crash | None; near-zero cost |
 | **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** | Zeroes freed heap memory, kills use-after-free info leaks | Perf cost is real; `INIT_ON_ALLOC_DEFAULT_ON` is already on |
 | **`CONFIG_ARM64_MTE`** | Memory tagging; GrapheneOS enables it for the kernel | Needs hardware support and a userspace that tolerates the tag checks |
 | **16 KB page size** | Required for new Android 16+ devices | Not a toggle — changing it breaks every existing binary on the device |

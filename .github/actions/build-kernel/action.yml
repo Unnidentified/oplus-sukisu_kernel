@@ -1696,6 +1696,15 @@ runs:
           exit 1
         fi
         find . -name '*.orig' -delete
+        # The patch moves the normalized_sysctl_sched_base_slice declaration into
+        # the !CONFIG_SCHED_BORE branch, but its set_protect_slice() still uses it
+        # unconditionally -> undeclared identifier on GKI. Point it at the live one.
+        if grep -q 'u64 slice = normalized_sysctl_sched_base_slice;' kernel/sched/fair.c; then
+          sed -i -E 's/^([[:space:]]*)u64 slice = normalized_sysctl_sched_base_slice;/\1u64 slice = sysctl_sched_base_slice;/' kernel/sched/fair.c
+          grep -q 'u64 slice = sysctl_sched_base_slice;' kernel/sched/fair.c \
+            || { echo "::error::set_protect_slice transform did not apply"; exit 1; }
+          echo "   set_protect_slice() now tracks sysctl_sched_base_slice"
+        fi
         for config in $(find arch/arm64/configs -type f -name "*defconfig"); do
           echo "CONFIG_SCHED_BORE=y" >> "$config"
         done

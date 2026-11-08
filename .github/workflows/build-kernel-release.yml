@@ -321,7 +321,7 @@ jobs:
           
           # For each device + each ksu option → one combined entry
           merged_matrix=$(jq -n --slurpfile devices matrix.json --argjson ksu_list "$ksu_options_normalized" \
-            '[ $devices[0][] as $dev | $ksu_list[] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: $ksu.hash}) ]')
+            '[ $devices[0][] as $dev | $ksu_list[] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: (if ($dev.ksu_hash? // null) != null then $dev.ksu_hash else $ksu.hash end)}) ]')
           
           # Sort matrix by OOS version (A16 -> A15 -> A14)
           merged_matrix=$(echo "$merged_matrix" | jq -c 'sort_by(.os_version) | reverse')
@@ -393,7 +393,7 @@ jobs:
           echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
           
           # Inject ksu_resolved_hash into each device in the matrix
-          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" 'map(.ksu_resolved_hash = $resolved_sha)')
+          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" --arg ksu_ref "$ksu_ref" 'map(.ksu_resolved_hash = (if .ksu_hash == $ksu_ref then $resolved_sha else .ksu_hash end))')
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
@@ -624,7 +624,7 @@ jobs:
           
           
           # Inject ksu_resolved_hash into each device in the matrix
-          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" 'map(.ksu_resolved_hash = $resolved_sha)')
+          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" --arg ksu_ref "$ksu_ref" 'map(.ksu_resolved_hash = (if .ksu_hash == $ksu_ref then $resolved_sha else .ksu_hash end))')
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"

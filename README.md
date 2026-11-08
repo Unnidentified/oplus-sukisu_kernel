@@ -28,6 +28,8 @@ No local toolchain needed: pick your device in GitHub Actions, and the kernel is
 | `ksu_options` | `[{"type":"ksun","hash":"builtin"}]` | SukiSU-Ultra `builtin` branch (the only line with in-kernel `KSU_SUSFS`; `main`/`dev` ship SUSFS as a userspace extension shim only) |
 | `ksu_mode` | `builtin` | `builtin` compiles SukiSU into the kernel (recommended, full SUSFS support); `lkm` downloads a prebuilt `kernelsu.ko` and injects it into the ramdisk at flash time |
 
+A device config can override the root branch per device with a `ksu_hash` field — e.g. `configs/a16/OP15-COS17.json` pins `main` (SukiSU-Ultra 41150+, SUSFS applied via the KSU-side patch since `main` has no in-kernel `KSU_SUSFS`) instead of the default `builtin` (34680). The same profile enables `bore` (BORE scheduler, `CONFIG_SCHED_BORE=y`, runtime toggle `/proc/sys/kernel/sched_bore`); WireGuard is already in the GKI defconfig.
+
 4. When the run finishes, grab the `{MODEL}_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts.
 
 Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}.zip` (LKM builds add `_LKM`), e.g. `OP15-COS17_android16-6.12.69-SuSFS_v2.3.0.zip` for a builtin SukiSU-Ultra + SUSFS build.

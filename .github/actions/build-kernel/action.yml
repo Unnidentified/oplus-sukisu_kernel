@@ -7,7 +7,7 @@ inputs:
     required: true
     type: string
   ksu_type:
-    description: 'Select root type (KSUN = SukiSU-Ultra, KSU = KernelSU)'
+    description: 'Select root type: SukiSU-Ultra (default) or legacy KernelSU'
     required: true
     type: choice
     options:
@@ -1043,7 +1043,7 @@ runs:
             echo "::warning::Failed to download ksuinit (may be required by ksud boot-patch)"
           fi
 
-          echo "KSUN" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+          echo "SukiSU-Ultra" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
           echo "${REL_TAG} (LKM)" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
           echo "KSUVER=${REL_TAG} (LKM)" >> $GITHUB_ENV
           echo "KSU_COMMIT_SHA=${REL_TAG}" >> $GITHUB_ENV
@@ -1126,12 +1126,12 @@ runs:
           KSU_COMMIT_SHA=$(git rev-parse HEAD)
           echo "KSU_COMMIT_SHA=$KSU_COMMIT_SHA" >> $GITHUB_ENV
           
-          echo "Add KSUN Configuration Settings"
+          echo "Add SukiSU-Ultra Configuration Settings"
           printf '%s\n' \
             'CONFIG_KSU=y' \
             >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
           
-          echo "KSUN" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+          echo "SukiSU-Ultra" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
           echo "$KSU_VERSION" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           echo "SukiSU Ultra Version: $KSU_VERSION"
@@ -1399,7 +1399,7 @@ runs:
             ;;
         esac
         else
-          echo " LKM mode: In-tree SukiSU-Ultra SUSFS patch skipped (modular KSUN driver used)."
+          echo " LKM mode: In-tree SukiSU-Ultra SUSFS patch skipped (modular SukiSU-Ultra driver used)."
         fi
         
         cd "$COMMON_KERNEL_FOLDER"
@@ -2740,15 +2740,15 @@ runs:
         ZIP_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
         if [ "${KSUMODE:-lkm}" = "lkm" ]; then
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type }}_${KSUVER:-unknown}_SuSFS_LKM.zip"
+            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}_SuSFS_LKM.zip"
           else
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type }}_${KSUVER:-unknown}_LKM.zip"
+            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}_LKM.zip"
           fi
         else
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type }}_${KSUVER:-unknown}_SuSFS_${SUSVER:-unknown}.zip"
+            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}_SuSFS_${SUSVER:-unknown}.zip"
           else
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type }}_${KSUVER:-unknown}.zip"
+            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}.zip"
           fi
         fi
         mkdir -p "$ARTIFACTS_FOLDER"
@@ -2800,8 +2800,8 @@ runs:
           echo "Build User: ${{ env.BUILD_USER }}"
           echo "Build Host: ${{ env.BUILD_HOST }}"
           if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-            echo "KSUN Version: ${KSUVER:-unknown}"
-            echo "KSUN commit SHA: ${KSU_SHA:-unknown}"
+            echo "SukiSU-Ultra Version: ${KSUVER:-unknown}"
+            echo "SukiSU-Ultra commit SHA: ${KSU_SHA:-unknown}"
           else
             echo "KSU Version: ${KSUVER:-unknown}"
             echo "KSU commit SHA: ${KSU_SHA:-unknown}"

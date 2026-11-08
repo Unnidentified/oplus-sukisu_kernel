@@ -14,6 +14,8 @@
   "rust_build": true,
   "disk_cleanup": true,
   "hmbird": false,
+  "autofdo": false,
+  "damon": true,
   "susfs": true,
   "opt": true,
   "ds": true,

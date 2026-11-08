@@ -171,7 +171,7 @@ jobs:
                   continue
               cfg = json.load(open(path))
               # Profiles whose build applies a patch we maintain in this repo.
-              if cfg.get("bore") or cfg.get("adios") or cfg.get("susfs_hash"):
+              if cfg.get("bore") or cfg.get("adios") or cfg.get("autofdo") or cfg.get("susfs_hash"):
                   entries.append({"label": cfg["model"], "config": path, "blocking": True})
 
           # One canary per kernel source that relies on the default SUSFS ref,

@@ -43,6 +43,10 @@ inputs:
     description: 'SukiSU-Ultra integration mode: lkm or builtin'
     required: false
     default: 'builtin'
+  lto_override:
+    description: 'Force an LTO mode for this build only (none, thin, full). Empty uses the value from the device config. Exists so LTO can be tested on a profile without editing its config and committing the change.'
+    required: false
+    default: ''
 
 outputs:
   kernel_version:
@@ -115,6 +119,7 @@ runs:
         set -euo pipefail
         echo '${{ inputs.op_config_json }}' > /tmp/config.json
         jq -r 'to_entries[] | "OP_\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "$GITHUB_ENV"
+        echo "OP_LTO_OVERRIDE=${{ inputs.lto_override }}" >> "$GITHUB_ENV"
         echo "Parsed config:"
         jq '.' /tmp/config.json
 
@@ -265,6 +270,11 @@ runs:
           errors+=("Input 'lto' cannot be empty")
         elif [[ "$lto" != "none" && "$lto" != "thin" && "$lto" != "full" ]]; then
           errors+=("Input 'lto' contains invalid characters. Allowed: 'thin', 'full' or 'none'. Got: '$lto'")
+        fi
+
+        lto_override='${{ inputs.lto_override }}'
+        if [[ -n "$lto_override" && "$lto_override" != "none" && "$lto_override" != "thin" && "$lto_override" != "full" ]]; then
+          errors+=("Input 'lto_override' must be empty, 'thin', 'full' or 'none'. Got: '$lto_override'")
         fi
         
         if [[ -z "$uname" ]]; then
@@ -2186,6 +2196,29 @@ runs:
         echo "   ADIOS applied, CONFIG_MQ_IOSCHED_ADIOS=y (default iosched)"
         echo "::endgroup::"
 
+    - name: Add DAMON
+      shell: bash
+      if: ${{ env.OP_DAMON == 'true' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Add DAMON"
+        # Android 17's GKI ships CONFIG_DAMON=y; android16-6.12 does not. DAMON
+        # is a data access monitor, so it costs nothing until a kdamond is
+        # actually started — enabling it adds the capability, not the overhead.
+        #
+        # DAMON_VADDR / DAMON_PADDR / DAMON_SYSFS already default to DAMON, but
+        # are spelled out so a future Kconfig change cannot silently drop them.
+        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_DAMON=y
+        CONFIG_DAMON_VADDR=y
+        CONFIG_DAMON_PADDR=y
+        CONFIG_DAMON_SYSFS=y
+        CONFIG_DAMON_RECLAIM=y
+        CONFIG_DAMON_LRU_SORT=y
+        EOF
+        echo "   DAMON enabled (reclaim + lru_sort built in, dormant until started)"
+        echo "::endgroup::"
+
     - name: Add Droidspaces support
       shell: bash
       if: ${{ env.OP_DS == 'true' }}
@@ -2254,6 +2287,42 @@ runs:
         CONFIG_FRAME_WARN=0
         CONFIG_TRACEPOINTS=y
         EOF
+
+    - name: Fetch AutoFDO profile
+      shell: bash
+      if: ${{ env.OP_AUTOFDO == 'true' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Fetch AutoFDO profile"
+        # gki_defconfig already sets CONFIG_AUTOFDO_CLANG=y, but without
+        # CLANG_AUTOFDO_PROFILE scripts/Makefile.autofdo only adds
+        # -fdebug-info-for-profiling and -gmlt: pure overhead, no profile-guided
+        # optimisation. The profile is the part that was missing.
+        #
+        # Pinned to a commit and verified by sha256: the profile is a build
+        # input, so a silent change to it would silently change every kernel
+        # we ship.
+        AFDO_COMMIT="3962e99d7c7335f02f63527384d5ae487da648d1"
+        AFDO_SHA256="e1e8f1ae45ed228655a922f34bc46325c4bf542ef20fb518a6e5bc8a90969818"
+        AFDO_PROFILE="$RUNNER_TEMP/kernel.afdo"
+        AFDO_URL="https://android.googlesource.com/kernel/common/+/${AFDO_COMMIT}/gki/aarch64/afdo/kernel.afdo?format=TEXT"
+
+        echo "Downloading $AFDO_URL"
+        if ! curl -fsSL --retry 3 --retry-delay 5 "$AFDO_URL" | base64 -d > "$AFDO_PROFILE"; then
+          echo "::error::Failed to download the AutoFDO profile. Refusing to build without it: a kernel that silently drops AutoFDO is not the kernel this profile was enabled for."
+          exit 1
+        fi
+
+        actual="$(sha256sum "$AFDO_PROFILE" | cut -d' ' -f1)"
+        if [ "$actual" != "$AFDO_SHA256" ]; then
+          echo "::error::AutoFDO profile checksum mismatch. Expected $AFDO_SHA256, got $actual."
+          exit 1
+        fi
+
+        echo "AFDO_PROFILE=$AFDO_PROFILE" >> "$GITHUB_ENV"
+        echo "AFDO_SHA256=$AFDO_SHA256" >> "$GITHUB_ENV"
+        echo "   profile verified: $(stat -c%s "$AFDO_PROFILE") bytes, sha256 $AFDO_SHA256"
+        echo "::endgroup::"
 
     - name: Add RUST build configs
       shell: bash
@@ -2552,20 +2621,48 @@ runs:
             ;;
         esac
         
-        scripts/config --file "$OUT/.config" -e LTO_CLANG -d LTO_CLANG_NONE -d LTO_CLANG_THIN -d LTO_CLANG_FULL
-        
-        case "${{ env.OP_LTO}}" in
-          "none") scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE ;;
+        # 6.12 spells the "no LTO" choice member LTO_NONE, not LTO_CLANG_NONE.
+        # The old name does not exist, so `-e LTO_CLANG_NONE` was a no-op that
+        # only worked because LTO_NONE happens to be the choice default.
+        scripts/config --file "$OUT/.config" -e LTO_CLANG -d LTO_NONE -d LTO_CLANG_THIN -d LTO_CLANG_FULL
+
+        lto_mode="${OP_LTO_OVERRIDE:-$OP_LTO}"
+        if [ -n "${OP_LTO_OVERRIDE:-}" ] && [ "$OP_LTO_OVERRIDE" != "$OP_LTO" ]; then
+          echo "::warning::LTO overridden for this build: config says '$OP_LTO', building with '$OP_LTO_OVERRIDE'"
+        fi
+
+        case "$lto_mode" in
+          "none") scripts/config --file "$OUT/.config" -e LTO_NONE ;;
           "thin") scripts/config --file "$OUT/.config" -e LTO_CLANG_THIN ;;
           "full") scripts/config --file "$OUT/.config" -e LTO_CLANG_FULL ;;
           *)
-            echo "::error::Unsupported LTO option: ${{ env.OP_LTO}}"
+            echo "::error::Unsupported LTO option: $lto_mode"
             exit 1
             ;;
         esac
-        
-        
+        echo "EFFECTIVE_LTO=$lto_mode" >> "$GITHUB_ENV"
+
+        if [ "${{ env.OP_AUTOFDO }}" = "true" ]; then
+          if [ -z "${AFDO_PROFILE:-}" ] || [ ! -s "$AFDO_PROFILE" ]; then
+            echo "::error::OP_AUTOFDO is true but AFDO_PROFILE is unset or empty. The profile fetch step did not run."
+            exit 1
+          fi
+          export CLANG_AUTOFDO_PROFILE="$AFDO_PROFILE"
+          echo " AutoFDO: profile $CLANG_AUTOFDO_PROFILE"
+        fi
+
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" olddefconfig
+
+        if [ "${{ env.OP_AUTOFDO }}" = "true" ]; then
+          # gki_defconfig already enables this; verify rather than assume, so a
+          # base-tree change that drops it fails here instead of shipping a
+          # kernel that quietly lost its profile.
+          if ! grep -q '^CONFIG_AUTOFDO_CLANG=y' "$OUT/.config"; then
+            echo "::error::CONFIG_AUTOFDO_CLANG is not set in $OUT/.config. gki_defconfig should already enable it — if this fires, the pinned base tree changed."
+            exit 1
+          fi
+          echo " Verified: CONFIG_AUTOFDO_CLANG=y is active"
+        fi
         
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "============================================"
@@ -2994,6 +3091,13 @@ runs:
           --ksu-ref "${{ inputs.ksu_branch_or_hash }}" \
           --ksu-commit "${KSU_COMMIT_SHA:-}" \
           --clang "${CLANG_VERSION:-}" \
+          --lto "${EFFECTIVE_LTO:-${OP_LTO:-}}" \
+          --autofdo "${OP_AUTOFDO:-false}" \
+          --autofdo-profile-sha256 "${AFDO_SHA256:-}" \
+          --damon "${OP_DAMON:-false}" \
+          --bore "${OP_BORE:-false}" \
+          --adios "${OP_ADIOS:-false}" \
+          --mlgo "${OP_MLGO:-false}" \
           --zip "$ARTIFACTS_FOLDER/$ZIP_NAME" \
           --run-id "$GITHUB_RUN_ID" \
           --run-attempt "$GITHUB_RUN_ATTEMPT" \

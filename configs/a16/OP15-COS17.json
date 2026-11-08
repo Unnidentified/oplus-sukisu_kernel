@@ -16,6 +16,8 @@
   "hmbird": false,
   "bore": true,
   "adios": true,
+  "autofdo": true,
+  "damon": true,
   "mlgo": true,
   "susfs": true,
   "susfs_hash": "c6788e2a21dc717beb7dd3a36b729b58bc909927",

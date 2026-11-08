@@ -2096,6 +2096,46 @@ runs:
         CONFIG_IP6_NF_NAT=y
         CONFIG_IP6_NF_TARGET_MASQUERADE=y
         EOF
+        
+        # Hide CONFIG_IP6_NF_NAT from /proc/config.gz (config_data display fix);
+        # stealth companion to IPv6 NAT, same as the reference NMS builds.
+        if [ -f "$KERNEL_PATCHES_FOLDER/common/IPv6_NAT_FIX.patch" ]; then
+          patch -p1 --forward -F3 < "$KERNEL_PATCHES_FOLDER/common/IPv6_NAT_FIX.patch"
+          if find . -name '*.rej' -print -quit | grep -q .; then
+            echo "::error::IPv6_NAT_FIX left rejects:"; find . -name '*.rej'; exit 1
+          fi
+          echo " IPv6_NAT config_data hiding applied"
+        fi
+
+    - name: Add ADIOS I/O Scheduler
+      if: ${{ env.OP_ADIOS == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Add ADIOS I/O Scheduler"
+        cd "$COMMON_KERNEL_FOLDER"
+        case "${{ env.KERNEL_VER }}" in
+          6.12) ;;
+          *) echo "   no ADIOS patch for ${{ env.KERNEL_VER }}; skipping"; echo "::endgroup::"; exit 0 ;;
+        esac
+        PATCH="${GITHUB_ACTION_PATH}/patches/adios_ioscheduler_6.12.patch"
+        [ -f "$PATCH" ] || { echo "::error::no ADIOS patch at $PATCH"; exit 1; }
+        if [ -f block/adios.c ]; then
+          echo "   ADIOS source already exists, skipping patch"
+        else
+          patch -p1 --ignore-whitespace -F3 < "$PATCH"
+          left="$(find . -name '*.rej' | sort)"
+          if [ -n "$left" ]; then
+            echo "::error::ADIOS left rejects:"; echo "$left" | sed 's/^/     /'; exit 1
+          fi
+          find . -name '*.orig' -delete
+        fi
+        for config in $(find arch/arm64/configs -type f -name "*defconfig"); do
+          echo "CONFIG_MQ_IOSCHED_ADIOS=y" >> "$config"
+          echo "CONFIG_MQ_IOSCHED_DEFAULT_ADIOS=y" >> "$config"
+        done
+        echo "   ADIOS applied, CONFIG_MQ_IOSCHED_ADIOS=y (default iosched)"
+        echo "::endgroup::"
 
     - name: Add Droidspaces support
       shell: bash

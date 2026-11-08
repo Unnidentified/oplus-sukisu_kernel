@@ -103,6 +103,7 @@ if [ "$susfs" = "true" ]; then
 fi
 
 [ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore_6.12.patch"
+[ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore-fix-pick-eevdf-6.12.23.patch"
 [ "$adios" = "true" ] && add_patch_paths "$patches_dir/adios_ioscheduler_6.12.patch"
 add_patch_paths "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
 
@@ -168,7 +169,18 @@ if [ "$bore" = "true" ]; then
       sed -i.bak 's/750000ULL/700000ULL/g; s/0\.75 msec/0.70 msec/g' \
         "$kernel_dir/kernel/sched/fair.c" 2>/dev/null || true
       rm -f "$kernel_dir/kernel/sched/fair.c.bak"
-      apply "BORE" "$patches_dir/bore_6.12.patch" --ignore-whitespace -F3
+      # 6.12.23 still has the older pick_eevdf() form, so the parity-guard hunk
+      # rejects. Mirror the build: re-apply it against that form.
+      rc=0
+      ( cd "$kernel_dir" && patch -p1 --forward --ignore-whitespace -F3 < "$patches_dir/bore_6.12.patch" ) || rc=$?
+      [ "$rc" -le 1 ] || fail "BORE: patch failed seriously (rc=$rc)"
+      if [ -f "$kernel_dir/kernel/sched/fair.c.rej" ]; then
+        log "BORE: pick_eevdf rejected, applying adapted parity guard"
+        rm -f "$kernel_dir/kernel/sched/fair.c.rej"
+        apply "BORE pick_eevdf fix" "$patches_dir/bore-fix-pick-eevdf-6.12.23.patch"
+      else
+        log "BORE: clean"
+      fi
       ;;
     *) log "BORE: no patch for $kernel, skipped" ;;
   esac

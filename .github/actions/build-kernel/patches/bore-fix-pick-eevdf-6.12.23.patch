@@ -1,0 +1,36 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] sched/fair: re-apply the BORE parity guard for 6.12.23
+
+The pick_eevdf() hunk in bore_6.12.patch is written against 6.12.44+, where
+the run-to-parity check reads:
+
+	if (curr && protect && protect_slice(curr))
+		return curr;
+
+OnePlus's sm8850 16.0.0 tree (6.12.23) still has the older form:
+
+	if (sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr))
+		return curr;
+
+so that hunk rejects. This re-applies the same guard against the older form.
+The guard is identical in intent: when burst parity is configured, a task
+that has used its slice is not allowed to run to parity, so it does not get
+an extra slice ahead of the tasks behind it.
+
+The build applies this only when kernel/sched/fair.c.rej exists, and only
+after the main BORE patch has run.
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -1004,6 +1004,10 @@
+ 		curr = NULL;
+ 
+ 	if (sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr))
++#ifdef CONFIG_SCHED_BORE
++		if (!(likely(sched_bore) && likely(sched_burst_parity_threshold) &&
++			sched_burst_parity_threshold < cfs_rq->nr_running))
++#endif // CONFIG_SCHED_BORE
+ 		return curr;
+ 
+ 	/* Pick the leftmost entity if it's eligible */

@@ -1719,6 +1719,13 @@ runs:
           echo "::error::BORE patch failed seriously (rc=$patch_rc)"
           exit "$patch_rc"
         fi
+        # 6.12.23 (OnePlus sm8850 16.0.0) still has the older pick_eevdf() form,
+        # so the run-to-parity hunk rejects. Re-apply the same guard against it.
+        if [ -f kernel/sched/fair.c.rej ]; then
+          echo "   BORE: pick_eevdf rejected, applying adapted parity guard"
+          rm -f kernel/sched/fair.c.rej
+          patch -p1 --forward < "${GITHUB_ACTION_PATH}/patches/bore-fix-pick-eevdf-6.12.23.patch"
+        fi
         left="$(find . -name '*.rej' | sort)"
         if [ -n "$left" ]; then
           echo "::error::BORE left rejects:"

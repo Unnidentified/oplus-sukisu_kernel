@@ -28,9 +28,9 @@ No local toolchain needed: pick your device in GitHub Actions, and the kernel is
 | `ksu_options` | `[{"type":"ksun","hash":"builtin"}]` | SukiSU-Ultra `builtin` branch (the only line with in-kernel `KSU_SUSFS`; `main`/`dev` ship SUSFS as a userspace extension shim only) |
 | `ksu_mode` | `builtin` | `builtin` compiles SukiSU into the kernel (recommended, full SUSFS support); `lkm` downloads a prebuilt `kernelsu.ko` and injects it into the ramdisk at flash time |
 
-4. When the run finishes, grab the `SKF_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts.
+4. When the run finishes, grab the `{MODEL}_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts.
 
-Zip names follow `SKF_{MODEL}_{OS}_{KERNEL}_{ROOT_TAG}_{VERSION}_SuSFS[_LKM].zip`, e.g. `SKF_OP15_A16_6.12.x_SUKISU_41140_SuSFS_v2.3.0.zip` for builtin SukiSU-Ultra builds (`SUKISU` tag).
+Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}.zip` (LKM builds add `_LKM`), e.g. `OP15-COS17_android16-6.12.69-SuSFS_v2.3.0.zip` for a builtin SukiSU-Ultra + SUSFS build.
 
 ---
 
@@ -69,7 +69,7 @@ For ColorOS 17 (Android 17) on the OnePlus 15, build with `op_model: OP15-COS17`
 ## Flashing
 
 1. Unlock the bootloader and back up your stock `boot` / `init_boot` image.
-2. Flash the `SKF_*.zip` with [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher), [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher), or a custom recovery. In `lkm` mode the installer patches the ramdisk on-device via `ksud boot-patch`.
+2. Flash the zip with [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher), [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher), or a custom recovery. In `lkm` mode the installer patches the ramdisk on-device via `ksud boot-patch`.
 3. Reboot, then install the SukiSU-Ultra manager APK.
 
 ---

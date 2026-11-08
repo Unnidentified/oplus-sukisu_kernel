@@ -2740,15 +2740,15 @@ runs:
         ZIP_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
         if [ "${KSUMODE:-lkm}" = "lkm" ]; then
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}_SuSFS_LKM.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}_LKM.zip"
           else
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}_LKM.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}_LKM.zip"
           fi
         else
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}_SuSFS_${SUSVER:-unknown}.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}.zip"
           else
-            ZIP_NAME="SKF_${ZIP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}_${{ inputs.ksu_type == 'KSUN' && 'SUKISU' || inputs.ksu_type }}_${KSUVER:-unknown}.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}.zip"
           fi
         fi
         mkdir -p "$ARTIFACTS_FOLDER"

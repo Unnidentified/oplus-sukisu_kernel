@@ -1123,29 +1123,31 @@ jobs:
             JSON_BUILD_DATA="[]"
           fi
           
+          ksu_type="${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].type }}"
+          ksu_ref="${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].hash }}"
+          ksu_resolved_hash="${{ needs.set-op-model.outputs.ksu_resolved_hash }}"
+
+          # Zip names: {MODEL}_{KERNEL_FULL_VER}[-SuSFS_{SUSVER}][_LKM]  (old SKF_*_KSUN_* names still tolerated)
           for file in $(find downloaded-artifacts -maxdepth 1 -name "*.zip" -type f | sort); do
             if [ -f "$file" ]; then
               zipname=$(basename "$file" .zip)
               rest="${zipname#SKF_}"
-              IFS='_' read -ra parts <<< "$rest"
-              model="${parts[0]}"
-              os_version="${parts[1]}"
-              kernel_version="${parts[2]}"
-              ksu_type="${parts[3]}"
-              ksu_ver="${parts[4]}"
-              if [ "${parts[5]:-}" = "SuSFS" ]; then
-                susfs_ver="${parts[6]:-unknown}"
-              else
-                susfs_ver="none"
+              model="${rest%%_*}"
+              rest2="${rest#*_}"
+              kernel_version="${rest2%%-SuSFS*}"
+              kernel_version="${kernel_version%%_LKM*}"
+              os_version="A$(echo "$kernel_version" | cut -d- -f1 | sed 's/android//')"
+              susfs_ver="none"
+              if [[ "$rest2" == *-SuSFS_* ]]; then
+                susfs_ver="${rest2##*-SuSFS_}"
+                susfs_ver="${susfs_ver%%_LKM*}"
               fi
+              ksu_ver=$(unzip -p "$file" "*.txt" 2>/dev/null | sed -n '4p')
+              ksu_ver="${ksu_ver:-unknown}"
               full_model="${model}_${os_version}_${kernel_version}"
               device_info["$full_model"]="$model|$os_version|$kernel_version|$ksu_type|$ksu_ver|$susfs_ver|$zipname"
             fi
           done
-          
-          ksu_type="${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].type }}"
-          ksu_ref="${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].hash }}"
-          ksu_resolved_hash="${{ needs.set-op-model.outputs.ksu_resolved_hash }}"
           
           OPTIMIZE_LEVEL="${{ inputs.optimize_level }}"
           CLEAN_BUILD="${{ inputs.clean_build }}"
@@ -1171,185 +1173,39 @@ jobs:
           fi
 
           cat << EOF > release_notes.md
-          <div align="center">
-            <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=500&size=20&duration=3000&pause=1000&color=00FF99&center=true&vCenter=true&width=600&lines=SukiSU-Ultra+%2B+SUSFS+Release;Built+for+OnePlus+GKI+devices;Version+${NEW_TAG};Fork+of+OP_KSUN_FS" alt="Typing SVG" />
-          </div>
-          
-          <div align="center">
-          
-          # OnePlus Kernels Release
-          
-          [![Release](https://img.shields.io/badge/release-${NEW_TAG}-blue?style=flat-square)](${{ github.server_url }}/${{ github.repository }}/releases/tag/${NEW_TAG})
-          [![Downloads](https://img.shields.io/github/downloads/${{ github.repository }}/${NEW_TAG}/total?style=flat-square&color=green&label=downloads)](${{ github.server_url }}/${{ github.repository }}/releases/tag/${NEW_TAG})
-          [![Workflow](https://img.shields.io/badge/Workflow-Build--Kernel-orange?style=flat-square)](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          <br>
-          
-          > ** Build Date:** $(date -u '+%A, %d %B %Y') | ** Build ID:** \`${{ github.run_id }}\`
-          
-          </div>
-          
-          ---
-          
-          <div align="center">
-          
-          ### Built Devices (${#device_info[@]} total)
-          
-          | Model | OS Version | Kernel Version | Features |
-          | :--- | :--- | :--- | :--- |
+          # OnePlus Kernels ${NEW_TAG}
+
+          Built: $(date -u '+%Y-%m-%d %H:%M UTC') | Run: \`${{ github.run_id }}\` | SukiSU-Ultra ${ksu_ver_global} | SUSFS ${SUSFS_BASE_VERSION}
+
+          ## Built zips (${#device_info[@]})
+
           EOF
-          
+
           for full_key in $(printf '%s\n' "${!device_info[@]}" | sort); do
             IFS='|' read -r model os_ver kernel_ver _ _ _ zipname <<< "${device_info[$full_key]}"
-            
-            android_ver=$(echo "$kernel_ver" | cut -d'-' -f1)
-            os_ver_display="Android ${android_ver#android}"
-            kernel_ver_display=$(echo "$kernel_ver" | cut -d'-' -f2)
-
-            full_kv=$(echo "$kernel_ver" | sed 's/^[^-]*-//')
-            possible_orig_model="${model}-${full_kv}"
-            feature_flags=$(echo "$JSON_BUILD_DATA" | jq -r --arg MODEL "$model" --arg ORIG_MODEL "$possible_orig_model" --arg OS "$os_ver" '
-              ([ .[] | select(.model == $ORIG_MODEL and .os_version == $OS) ][0]) //
-              ([ .[] | select(.model == $MODEL and .os_version == $OS) ][0]) |
-              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)\t\(.ntsync // false)"
-            ' | head -n 1)
-            
-            features=()
-            if [[ -n "$feature_flags" ]]; then
-              IFS=$'\t' read -r hmbird susfs bbr bbg ttl ip_set unicode ds ntsync <<< "$feature_flags"
-              [[ "$hmbird" == "true" ]] && features+=(" HMBIRD")
-              [[ "$susfs" == "true" ]] && features+=("ඞ SusFS")
-              if [[ "$bbr" == "true" ]]; then
-                # Show BBRv3 when bbr3 flag is true, otherwise BBR
-                bbr3_flag=$(echo "$JSON_BUILD_DATA" | jq -r --arg MODEL "$model" --arg ORIG_MODEL "$possible_orig_model" --arg OS "$os_ver" '
-                  ([ .[] | select(.model == $ORIG_MODEL and .os_version == $OS) ][0]) //
-                  ([ .[] | select(.model == $MODEL and .os_version == $OS) ][0]) |
-                  .bbr3 // false
-                ' | head -n 1)
-                if [[ "$bbr3_flag" == "true" ]]; then
-                  features+=(" BBRv3")
-                else
-                  features+=(" BBR")
-                fi
-              fi
-              [[ "$bbg" == "true" ]] && features+=(" BBG")
-              [[ "$ttl" == "true" ]] && features+=(" TTL")
-              [[ "$ip_set" == "true" ]] && features+=(" IP_SET")
-              [[ "$unicode" == "true" ]] && features+=(" Unicode")
-              [[ "$ds" == "true" ]] && features+=(" Droidspaces")
-              [[ "$ntsync" == "true" ]] && features+=(" NTSync")
-            fi
-            
-            features_str=$(IFS=' '; echo "${features[*]:-N/A}")
             DOWNLOAD_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${NEW_TAG}/${zipname}.zip"
-            printf "| [%s](%s) | %-10s | %-16s | %-48s |\n" "$model" "$DOWNLOAD_URL" "$os_ver_display" "$kernel_ver_display" "$features_str" >> release_notes.md
+            echo "- [\`${zipname}.zip\`](${DOWNLOAD_URL}) — ${model}, ${os_ver}, kernel \`${kernel_ver}\`" >> release_notes.md
           done
-          
+
           cat << EOF >> release_notes.md
-          
-          </div>
-          
-          ---
-          
-          <details>
-          <summary><b> View Build Configuration</b></summary>
-          
-          | Component | Version/Setting |
-          |-----------|----------------|
-          | **SukiSU-Ultra Branch** | \`${ksu_ref} (${ksu_resolved_hash:0:7})\` |
-          | **SukiSU-Ultra Version** | \`$ksu_ver_global\` |
-          | **SUSFS Version** | \`$SUSFS_BASE_VERSION\` |
-          | **Optimization Level** | \`$OPTIMIZE_LEVEL\` |
-          | **Clean Build** | $( [ "$CLEAN_BUILD" = "true" ] && echo " Yes" || echo " No" ) |
-          
-          ### SUSFS Branch Mapping
-          
-          | Kernel Version | SUSFS Commit |
-          |----------------|--------------|
-          EOF
-          
-          for key in "${active_gki_keys[@]}"; do
-            echo "| $key | \`${susfs_map[$key]:-unknown}\` |" >> release_notes.md
-          done
-          
-          cat << 'EOF' >> release_notes.md
-          </details>
-          
-          ---
-          
-          ## Features & Capabilities
-          
-          | Feature | Description |
-          |:---|:---|
-          | **SukiSU-Ultra** | KernelSU-Next fork with integrated SUSFS — kernel-level root |
-          | **SUSFS** | Advanced root hiding with Magic Mount support |
-          | **Droidspaces** | SYSVIPC support for multi-instance app environments |
-          | **NTSync** | Fast wine synchronization primitives for emulation |
-          | **Manual Hooks** | \`scope_min_manual_hooks_v1.4\` for better app compatibility |
-          | **BBRv3** | Next-gen TCP congestion control |
-          | **BBG** | LSM-based Baseband Guard security |
-          | **TTL Target Support** | Network packet manipulation |
-          | **IP Set Support** | Advanced firewall capabilities |
-          | **HMBIRD SCX** | Scheduler extensions for SM8750 devices |
-          | **LTO** | Link Time Optimization |
-          | **TMPFS XATTR** | Extended attributes for Mountify support |
-          | **Optimization** | Memory, I/O, CPU scheduler, network tuning patches |
-          | **Battery** | Multi-patch suite for power efficiency and wakelock reduction |
-          | **WireGuard** | Fast, modern, and secure kernel-level VPN |
-          
-          <br>
-          
-          <details>
-          <summary><b> View SUSFS Hide Capabilities</b></summary>
-          
-          - SUS_PATH · SUS_MOUNT · SUS_KSTAT · SUS_MAP
-          - SPOOF_UNAME · SPOOF_CMDLINE · OPEN_REDIRECT · AVC_SPOOF
-          </details>
-          
-          ---
-          
-          ## Manager Applications
-          
-          ### Official Manager
-          - **SukiSU-Ultra Manager**
-            → [GitHub](https://github.com/SukiSU-Ultra/SukiSU-Ultra)
-          
-          ### SusFS Module
-          - **KSU SUSFS Module** (Required for SUSFS features)
-            → [GitHub Release](https://github.com/sidex15/ksu_module_susfs/releases)
-          
-          ### Recommended Flasher
-          - **Kernel Flasher** (Recommended for flashing AnyKernel3 ZIPs, backups and OTA)
-            → [GitHub Release](https://github.com/fatalcoder524/KernelFlasher/releases)
-          - **SukiSU Built-in Flasher** (Alternative flasher)
-            → Accessible directly within the SukiSU-Ultra Manager app
-          
-          ---
-          
-          ## Installation Instructions
-          
-          <details>
-          <summary><b> View Prerequisites</b></summary>
-          
-          - Unlocked bootloader.
-          - Backup your current boot image.
-          - Have root access using Magisk / KernelSU / SukiSU-Ultra (any fork) / Apatch.
-          </details>
-          
-          ### Via Kernel Flasher
-          1. Download the appropriate ZIP for your device from the Assets below.
-          2. Flash the ZIP file using [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher) or [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher).
-          3. Reboot system.
-          4. Install the SukiSU-Ultra Manager app.
-          5. Install SUSFS module from manager.
-          
-          ---
-          
+
+          ## Kernel contents
+
+          - [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) ${ksu_ver_global}, compiled in-tree (\`builtin\`). Install the manager APK from its [releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).
+          - [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) ${SUSFS_BASE_VERSION} — magic mount, SUS_PATH / SUS_MOUNT / SUS_KSTAT / SUS_MAP, uname & cmdline spoofing, open redirect.
+          - Network/misc tweaks: BBR/BBR3, TTL, IP set, Unicode bypass, battery/wakelock tuning.
+          - [Baseband Guard](https://github.com/vc-teahouse/Baseband-guard) stays disabled, so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains keep working.
+
+          ## Flashing
+
+          Unlock the bootloader, back up your stock \`boot\` image, flash the zip with [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher) / [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher) or a custom recovery, reboot, then install the SukiSU-Ultra manager APK. Stock ROMs only — match model and OS version exactly.
+
+          Per-device feature toggles live in [\`configs/a16/\`](https://github.com/${REPO_OWNER}/${REPO_NAME}/tree/main/configs/a16) — fork the repo, edit the device JSON, run the Build Kernel workflow.
+
           ## Changelog
-          
-          ### This Release
+
           EOF
-          
+
           if [ -f "changelog.txt" ] && [ -s "changelog.txt" ]; then
             echo '```text' >> release_notes.md
             cat changelog.txt >> release_notes.md
@@ -1370,46 +1226,11 @@ jobs:
             echo "" >> release_notes.md
             echo '```' >> release_notes.md
           fi
-          
+
           cat << 'EOF' >> release_notes.md
-          
+
           ### Previous Releases
-          See [Releases Page](https://github.com/Unnidentified/oplus-sukisu_kernel/releases)
-          
-          ---
-          
-          ## Special Thanks
-          
-          These people help make this project possible.
-          
-          <div align="center">
-          
-          | Project/Role | Developer | Link |
-          |:---:|:---:|:---:|
-          | **Original Repository** | fatalcoder524 | [![GitHub](https://img.shields.io/badge/GitHub-fatalcoder524-blue?style=flat-square&logo=github)](https://github.com/fatalcoder524) |
-          | **KernelSU** | tiann | [![GitHub](https://img.shields.io/badge/GitHub-tiann-blue?style=flat-square&logo=github)](https://github.com/tiann/KernelSU) |
-          | **SukiSU-Ultra** (KernelSU-Next fork) | SukiSU-Ultra | [![GitHub](https://img.shields.io/badge/GitHub-SukiSU--Ultra-blue?style=flat-square&logo=github)](https://github.com/SukiSU-Ultra/SukiSU-Ultra) |
-          | **SUSFS** | simonpunk | [![GitLab](https://img.shields.io/badge/GitLab-simonpunk-orange?style=flat-square&logo=gitlab)](https://gitlab.com/simonpunk/susfs4ksu.git) |
-          | **SUSFS Module** | sidex15 | [![GitHub](https://img.shields.io/badge/GitHub-sidex15-blue?style=flat-square&logo=github)](https://github.com/sidex15) |
-          | **Optimization Patches** | backslashxx | [![GitHub](https://img.shields.io/badge/GitHub-backslashxx-blue?style=flat-square&logo=github)](https://github.com/backslashxx) |
-          | **Optimization Patches** | liqideqq (Teemo) | [![GitHub](https://img.shields.io/badge/GitHub-liqideqq-blue?style=flat-square&logo=github)](https://github.com/liqideqq) |
-          
-          </div>
-          
-          ---
-          
-          ## Support & Connect
-          
-          <div align="center">
-          
-          [![Telegram](https://img.shields.io/badge/Telegram-SakFi-blue?logo=telegram)](http://t.me/SakFi)
-          [![GitHub](https://img.shields.io/badge/GitHub-SakFi-blue?logo=github)](https://github.com/sakfi)
-          
-          <br>
-          
-          ** Built with by [sakfi](https://github.com/sakfi)**
-          
-          </div>
+          See the [Releases page](https://github.com/${REPO_OWNER}/${REPO_NAME}/releases).
           EOF
           
           echo "--- Final Release Notes Created ---"

@@ -1095,7 +1095,26 @@ jobs:
           for full_key in $(printf '%s\n' "${!device_info[@]}" | sort); do
             IFS='|' read -r model os_ver kernel_ver _ _ _ zipname <<< "${device_info[$full_key]}"
             DOWNLOAD_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${NEW_TAG}/${zipname}.zip"
+            # Hash the artifact we are about to publish, not a value carried
+            # through the matrix, so the published checksum is the one users get.
+            zip_sha=$(sha256sum "./downloaded-artifacts/${zipname}.zip" 2>/dev/null | awk '{print $1}')
+            zip_sha="${zip_sha:-unavailable}"
             echo "- [\`${zipname}.zip\`](${DOWNLOAD_URL}) — ${model}, ${os_ver}, kernel \`${kernel_ver}\`" >> release_notes.md
+            echo "  - \`sha256: ${zip_sha}\`" >> release_notes.md
+          done
+
+          cat << EOF >> release_notes.md
+
+          ## Build provenance
+
+          Every zip ships a \`build-info.json\` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, and the image/zip checksums.
+
+          EOF
+
+          for full_key in $(printf '%s\n' "${!device_info[@]}" | sort); do
+            IFS='|' read -r model os_ver _ _ _ _ _ <<< "${device_info[$full_key]}"
+            INFO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${NEW_TAG}/${model}_${os_ver}_build-info.json"
+            echo "- [\`${model}_${os_ver}_build-info.json\`](${INFO_URL})" >> release_notes.md
           done
 
           cat << EOF >> release_notes.md
@@ -1106,6 +1125,16 @@ jobs:
           - [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) ${SUSFS_BASE_VERSION} — magic mount, SUS_PATH / SUS_MOUNT / SUS_KSTAT / SUS_MAP, uname & cmdline spoofing, open redirect.
           - Network/misc tweaks: BBR/BBR3, TTL, IP set, Unicode bypass.
           - [Baseband Guard](https://github.com/vc-teahouse/Baseband-guard) stays disabled, so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains keep working.
+
+          ## Verifying your download
+
+          Compare the checksum of the file you downloaded against the one listed above:
+
+          \`\`\`sh
+          sha256sum <your-zip>.zip
+          \`\`\`
+
+          A mismatch means a truncated or tampered download — do not flash it.
 
           ## Flashing
 
@@ -1159,12 +1188,32 @@ jobs:
 
       - name: Upload Release Assets Dynamically
         run: |
-          for file in ./downloaded-artifacts/*.zip; do
-            if [ -f "$file" ]; then
-              echo "Uploading $file..."
-              gh release upload "$NEW_TAG" "$file" --clobber
-            fi
+          set -euo pipefail
+          shopt -s nullglob
+
+          zips=(./downloaded-artifacts/*.zip)
+          infos=(./downloaded-artifacts/*_build-info.json)
+
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::No zips found in ./downloaded-artifacts — refusing to publish an empty release"
+            exit 1
+          fi
+
+          echo "Uploading ${#zips[@]} zip(s) and ${#infos[@]} build-info file(s) to $NEW_TAG"
+          for file in "${zips[@]}" "${infos[@]}"; do
+            echo "Uploading $file..."
+            gh release upload "$NEW_TAG" "$file" --clobber
           done
+
+          echo "=== Assets attached to $NEW_TAG ==="
+          gh release view "$NEW_TAG" --json assets --jq '.assets[].name' | sort
+
+          attached=$(gh release view "$NEW_TAG" --json assets --jq '.assets | length')
+          if [ "$attached" -lt "${#zips[@]}" ]; then
+            echo "::error::Expected at least ${#zips[@]} assets on $NEW_TAG, found $attached"
+            exit 1
+          fi
+          echo "All ${#zips[@]} zip(s) attached"
 
       - name: Release summary
         if: success()

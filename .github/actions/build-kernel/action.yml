@@ -84,6 +84,9 @@ outputs:
   zip_name:
     description: 'Name of the generated flashable ZIP'
     value: ${{ steps.create_zip.outputs.zip_name }}
+  build_info_path:
+    description: 'Path to the generated build-info.json provenance record'
+    value: ${{ steps.build_info.outputs.build_info_path }}
 
 runs:
   using: 'composite'
@@ -939,7 +942,20 @@ runs:
               exit 1
             fi
           fi
-          echo "SUSFS_COMMIT_SHA=$SUSFS_BRANCH" >> $GITHUB_ENV
+          # SUSFS_BRANCH is a ref (branch name or 40-char hash), not a commit.
+          # The archive path extracts a tarball with no .git, so fall back to the
+          # ref when it is already a full commit hash.
+          SUSFS_COMMIT_SHA=$(git -C susfs4ksu rev-parse HEAD 2>/dev/null || true)
+          if [ -z "$SUSFS_COMMIT_SHA" ] && [[ "$SUSFS_BRANCH" =~ ^[0-9a-f]{40}$ ]]; then
+            SUSFS_COMMIT_SHA="$SUSFS_BRANCH"
+          fi
+          if [ -z "$SUSFS_COMMIT_SHA" ]; then
+            echo "::warning::Could not resolve a commit for SUSFS ref '$SUSFS_BRANCH'; provenance will record the ref only"
+          fi
+          echo "SUSFS_REF=$SUSFS_BRANCH" >> $GITHUB_ENV
+          echo "SUSFS_COMMIT_SHA=$SUSFS_COMMIT_SHA" >> $GITHUB_ENV
+          echo " SUSFS ref: $SUSFS_BRANCH"
+          echo " SUSFS commit: ${SUSFS_COMMIT_SHA:-unknown}"
         fi
         echo " Dependencies cloned"
         echo "::endgroup::"
@@ -2933,6 +2949,51 @@ runs:
         echo " Report: $REPORT"
         echo "::endgroup::"
 
+    - name: Write build info
+      id: build_info
+      shell: bash
+      if: ${{ always() && steps.create_zip.conclusion == 'success' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Write build info"
+        WRITER="${{ github.action_path }}/../../../scripts/build-info.py"
+        OUT="$GITHUB_WORKSPACE/${OP_MODEL}_${OP_OS_VERSION}_build-info.json"
+
+        if [ ! -f "$WRITER" ]; then
+          echo "::error::build-info writer not found at $WRITER"
+          exit 1
+        fi
+
+        python3 "$WRITER" \
+          --out "$OUT" \
+          --manifest "$CONFIG_FOLDER/manifest.xml" \
+          --model "$OP_MODEL" \
+          --os-version "$OP_OS_VERSION" \
+          --android-version "$OP_ANDROID_VERSION" \
+          --kernel-version "$OP_KERNEL_VERSION" \
+          --soc "${OP_SOC:-}" \
+          --uname "${OP_UNAME:-}" \
+          --kernel-branch "${OP_BRANCH:-}" \
+          --kernel-full-version "${KERNEL_FULL_VER:-}" \
+          --image-sha256 "${{ steps.collect_stats.outputs.image_sha256 }}" \
+          --susfs-version "${SUSVER:-}" \
+          --susfs-ref "${SUSFS_REF:-}" \
+          --susfs-commit "${SUSFS_COMMIT_SHA:-}" \
+          --ksu-type "${{ inputs.ksu_type }}" \
+          --ksu-version "${KSUVER:-}" \
+          --ksu-ref "${{ inputs.ksu_branch_or_hash }}" \
+          --ksu-commit "${KSU_COMMIT_SHA:-}" \
+          --clang "${CLANG_VERSION:-}" \
+          --zip "$ARTIFACTS_FOLDER/$ZIP_NAME" \
+          --run-id "$GITHUB_RUN_ID" \
+          --run-attempt "$GITHUB_RUN_ATTEMPT" \
+          --repository "$GITHUB_REPOSITORY" \
+          --commit "$GITHUB_SHA" \
+          --workflow "$GITHUB_WORKFLOW"
+
+        echo "build_info_path=$OUT" >> "$GITHUB_OUTPUT"
+        echo "::endgroup::"
+
     - name: Final Build Summary
       shell: bash
       run: |
@@ -3102,6 +3163,15 @@ runs:
         path: ${{ github.workspace }}/kmi-report.txt
         if-no-files-found: ignore
         retention-days: 30
+
+    - name: Upload build info
+      if: ${{ always() && steps.build_info.conclusion == 'success' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_build_info
+        path: ${{ steps.build_info.outputs.build_info_path }}
+        archive: false
+        retention-days: 90
 
     - name: Upload ccache log
       if: success() && inputs.debug == 'true' && steps.build_kernel_step.conclusion == 'success'

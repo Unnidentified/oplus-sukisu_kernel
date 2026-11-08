@@ -327,243 +327,6 @@ jobs:
             KSU_REPO_OWNER="SukiSU-Ultra"
             KSU_REPO_NAME="SukiSU-Ultra"
           else
-            KSU_REPO_OWNER="SukiSU-Ultra"
-            KSU_REPO_NAME="SukiSU-Ultra"
-          fi
-          
-          HEAD_REF="refs/heads/${ksu_ref}"
-          TAG_REF="refs/tags/${ksu_ref}"
-          
-          QUERY='query($owner: String!, $name: String!, $headRef: String!, $tagRef: String!, $objRef: String!) {
-            repository(owner: $owner, name: $name) {
-              hb: ref(qualifiedName: $headRef) { t: target { ... on Commit { o: oid } } }
-              ht: ref(qualifiedName: $tagRef) { t: target { ... on Commit { o: oid } } }
-              ho: object(expression: $objRef) { ... on Commit { o: oid } }
-            }
-          }'
-          
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          RETRY_DELAY=5 # Seconds to wait between retries
-          
-          echo "Resolving $ksu_type hash ($ksu_ref)..."
-          
-          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-            RESULT=$(gh api graphql -f query="$QUERY" -f owner="$KSU_REPO_OWNER" -f name="$KSU_REPO_NAME" -f headRef="$HEAD_REF" -f tagRef="$TAG_REF" -f objRef="$ksu_ref" 2>/dev/null)
-            EXIT_CODE=$?
-            
-            if [ $EXIT_CODE -eq 0 ] && [ ! -z "$RESULT" ]; then
-              echo " API Success"
-              break
-            fi
-            
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "::warning::API failed (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in ${RETRY_DELAY}s..."
-            sleep $RETRY_DELAY
-          done
-          
-          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "::error::GitHub API unreachable. Cannot validate $ksu_ref"
-            exit 1
-          fi
-          
-          resolved_sha=$(echo "$RESULT" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .ho.o // "unknown")')
-          
-          if [ "$resolved_sha" == "unknown" ]; then
-            echo "::error::Ref/Hash '$ksu_ref' does not exist in $KSU_REPO_OWNER/$KSU_REPO_NAME"
-            exit 1
-          fi
-          
-          echo " Resolved: $ksu_type/$ksu_ref → $resolved_sha"
-          echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
-          
-          # Inject ksu_resolved_hash into each device in the matrix
-          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" --arg ksu_ref "$ksu_ref" 'map(.ksu_resolved_hash = (if .ksu_hash == $ksu_ref then $resolved_sha else .ksu_hash end))')
-          
-          # SUSFS hash fetch
-          SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
-          GITLAB_PROJECT_PATH="simonpunk/susfs4ksu"
-          
-          declare -A default_branches=(
-            ["android12-5.10"]="gki-android12-5.10"
-            ["android13-5.15"]="gki-android13-5.15"
-            ["android14-6.1"]="gki-android14-6.1"
-            ["android15-6.6"]="gki-android15-6.6"
-            ["android16-6.12"]="gki-android16-6.12"
-          )
-          
-          declare -A user_inputs=(
-            ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
-            ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
-            ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
-            ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
-            ["android16-6.12"]="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
-          )
-          
-          mapfile -t active_keys < <(
-            echo "$merged_matrix" \
-              | jq -r '.[] | select(.susfs == true) | "\(.android_version)-\(.kernel_version)"' \
-              | sort -u
-          )
-          
-          echo " Resolving SUSFS hashes for: ${active_keys[*]:-none}"
-          
-          declare -A susfs_hashes
-          declare -A susfs_versions_per_key
-          
-          for key in "${active_keys[@]}"; do
-            default_val="${default_branches[$key]}"
-            user_val="${user_inputs[$key]:-$default_val}"
-            # If every device for this key pins its own susfs_hash, resolve the
-            # pin instead of the default branch (a renamed/deleted default
-            # branch must not break pinned builds).
-            pinned=$(echo "$merged_matrix" | jq -r --arg key "$key" '
-              [.[] | select(.susfs == true) | select((.android_version + "-" + .kernel_version) == $key) | .susfs_hash // empty]
-              | if (length > 0) and ((map(select(. == "")) | length) == 0) then .[0] else "" end')
-            query_val="${pinned:-$user_val}"
-            
-            # Build GraphQL query — include blob fetch only when releasing
-            HASH_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${query_val}\") { sha } } } }"
-            RELEASE_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${query_val}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${query_val}\") { nodes { rawBlob } } } } }"
-            
-            if [ "${{ inputs.make_release }}" = "true" ]; then
-              GL_QUERY="$RELEASE_QUERY"
-            else
-              GL_QUERY="$HASH_QUERY"
-            fi
-            
-            MAX_RETRIES=3
-            RETRY_COUNT=0
-            RETRY_DELAY=5
-            resolved=""
-            
-            until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-              RESPONSE=$(curl -s --fail -G "https://gitlab.com/api/graphql" --data-urlencode "query=$GL_QUERY")
-              EXIT_CODE=$?
-              
-              if [ $EXIT_CODE -eq 0 ] && [ -n "$RESPONSE" ]; then
-                resolved=$(echo "$RESPONSE" | jq -r '.data.project.repository.ch.sha // empty')
-                if [ -n "$resolved" ] && [ "$resolved" != "null" ]; then
-                  echo " Query for $key Success"
-                  
-                  if [ "${{ inputs.make_release }}" = "true" ]; then
-                    extracted=$(echo "$RESPONSE" | jq -r '.data.project.repository.blobs.nodes[0].rawBlob // empty' | grep '#define SUSFS_VERSION' | awk -F'"' '{print $2}')
-                    susfs_versions_per_key[$key]="${extracted:-unknown}"
-                    echo " $key → SUSFS_VERSION = ${extracted:-unknown}"
-                  fi
-                  
-                  break
-                fi
-              fi
-              
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "::warning::GitLab GraphQL API failed (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying..."
-              sleep $RETRY_DELAY
-            done
-            
-            # Final Validation — SUSFS hash
-            if [ -z "$resolved" ] || [ "$resolved" = "null" ]; then
-              echo "::error::Could not resolve SUSFS ref '$query_val' for $key on GitLab."
-              exit 1
-            fi
-            
-            # Final Validation — SUSFS version
-            if [ "${{ inputs.make_release }}" = "true" ] && [ "${susfs_versions_per_key[$key]:-unknown}" = "unknown" ]; then
-              echo "::error::Could not extract SUSFS_VERSION from susfs.h for '$key' after $MAX_RETRIES attempts. Cannot proceed with release."
-              exit 1
-            fi
-            
-            susfs_hashes["$key"]="$resolved"
-            echo " Resolved: $key → $resolved"
-          done
-          
-          # Write CSV list of active GKI versions
-          active_gki_keys_csv=$(IFS=','; echo "${active_keys[*]:-}")
-          echo "active_gki_keys=$active_gki_keys_csv" >> "$GITHUB_OUTPUT"
-          
-          # Write hash to GITHUB_OUTPUT
-          echo "susfs_hash_android12_5_10=${susfs_hashes[android12-5.10]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android13_5_15=${susfs_hashes[android13-5.15]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android14_6_1=${susfs_hashes[android14-6.1]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
-          
-          # SUSFS_VERSION — only when releasing
-          if [ "${{ inputs.make_release }}" = "true" ]; then
-            susfs_base_version="unknown"
-            for key in "${active_keys[@]}"; do
-              ver="${susfs_versions_per_key[$key]:-unknown}"
-              if [ "$ver" != "unknown" ]; then
-                susfs_base_version="$ver"
-                break
-              fi
-            done
-            
-            if [ "$susfs_base_version" = "unknown" ]; then
-              echo "::error::Could not extract SUSFS_VERSION from susfs.h for any active GKI key. Cannot proceed with release."
-              exit 1
-            fi
-            
-            # make_release=true: mismatch is a hard error — prevents wrong tag
-            for key in "${active_keys[@]}"; do
-              key_ver="${susfs_versions_per_key[$key]:-unknown}"
-              if [ "$key_ver" != "$susfs_base_version" ]; then
-                echo "::error::SUSFS version mismatch: '$key' has '$key_ver', expected '$susfs_base_version'. Align refs before releasing."
-                exit 1
-              fi
-            done
-            
-            # Ensure v prefix for standardized versioning
-            [[ "$susfs_base_version" != v* ]] && susfs_base_version="v$susfs_base_version"
-            echo "susfs_base_version=$susfs_base_version" >> "$GITHUB_OUTPUT"
-          fi
-          
-          # Inject susfs_resolved_hash into each device in the matrix
-          susfs_hashes_json=$(jq -n \
-            --arg a12 "${susfs_hashes[android12-5.10]:-unknown}" \
-            --arg a13 "${susfs_hashes[android13-5.15]:-unknown}" \
-            --arg a14 "${susfs_hashes[android14-6.1]:-unknown}" \
-            --arg a15 "${susfs_hashes[android15-6.6]:-unknown}" \
-            --arg a16 "${susfs_hashes[android16-6.12]:-unknown}" \
-            '{
-              "android12-5.10": $a12,
-              "android13-5.15": $a13,
-              "android14-6.1": $a14,
-              "android15-6.6": $a15,
-              "android16-6.12": $a16
-            }')
-          
-          merged_matrix=$(echo "$merged_matrix" | jq \
-            --argjson hashes "$susfs_hashes_json" \
-            '[.[] | . + {susfs_resolved_hash: (if (.susfs_hash? // null) != null then .susfs_hash else ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown") end)}]')
-          
-          merged_matrix=$(echo "$merged_matrix" | jq '
-            sort_by(
-              (.os_version | gsub("A"; "") | tonumber? // 0) * -1,
-              .model
-            )
-          ')
-          
-          # Split matrix by OOS version for better parallelism
-          matrix_A16=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A16")) | {include: .}')
-          matrix_A15=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A15")) | {include: .}')
-          matrix_A14=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A14")) | {include: .}')
-          
-          echo "matrix_A16=$matrix_A16" >> "$GITHUB_OUTPUT"
-          echo "matrix_A15=$matrix_A15" >> "$GITHUB_OUTPUT"
-          echo "matrix_A14=$matrix_A14" >> "$GITHUB_OUTPUT"
-          
-          # Maintain compatibility for existing job
-          wrapped=$(jq -c '{ include: . }' <<< "$merged_matrix")
-          echo "matrix=$wrapped" >> "$GITHUB_OUTPUT"
-          
-          ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
-          ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
-          
-          if [ "$ksu_type" == "KSUN" ]; then
-            KSU_REPO_OWNER="SukiSU-Ultra"
-            KSU_REPO_NAME="SukiSU-Ultra"
-          else
             KSU_REPO_OWNER="tiann"
             KSU_REPO_NAME="KernelSU"
           fi
@@ -614,13 +377,52 @@ jobs:
           echo " Resolved: $ksu_type/$ksu_ref → $resolved_sha"
           echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
           
-          
+          # Per-config ksu_hash overrides are resolved here too, so a bad ref
+          # fails in seconds instead of after a full kernel build.
+          mapfile -t extra_ksu_refs < <(echo "$merged_matrix" | jq -r --arg base "$ksu_ref" '
+            [ .[] | .ksu_hash // empty | select(. != $base) ] | unique | .[]')
+
+          declare -A ksu_extra_hashes
+          for extra in "${extra_ksu_refs[@]}"; do
+            echo "Resolving per-config ksu_hash ($extra)..."
+            extra_sha=""
+            attempt=0
+            while [ "$attempt" -lt "$MAX_RETRIES" ]; do
+              extra_result=$(gh api graphql -f query="$QUERY" \
+                -f owner="$KSU_REPO_OWNER" -f name="$KSU_REPO_NAME" \
+                -f headRef="refs/heads/${extra}" -f tagRef="refs/tags/${extra}" \
+                -f objRef="$extra" 2>/dev/null) || extra_result=""
+              if [ -n "$extra_result" ]; then
+                extra_sha=$(echo "$extra_result" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .ho.o // "unknown")')
+                [ "$extra_sha" != "unknown" ] && break
+                extra_sha=""
+              fi
+              attempt=$((attempt + 1))
+              echo "::warning::API failed for ksu_hash '$extra' (Attempt $attempt/$MAX_RETRIES). Retrying in ${RETRY_DELAY}s..."
+              sleep "$RETRY_DELAY"
+            done
+            if [ -z "$extra_sha" ]; then
+              echo "::error::Per-config ksu_hash '$extra' does not exist in $KSU_REPO_OWNER/$KSU_REPO_NAME"
+              exit 1
+            fi
+            ksu_extra_hashes["$extra"]="$extra_sha"
+            echo " Resolved: ksu_hash/$extra → $extra_sha"
+          done
+
+          ksu_extra_json=$(for k in "${!ksu_extra_hashes[@]}"; do
+            printf '%s\t%s\n' "$k" "${ksu_extra_hashes[$k]}"
+          done | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {(.[0]): .[1]}) | add // {}')
+
           # Inject ksu_resolved_hash into each device in the matrix
-          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" --arg ksu_ref "$ksu_ref" 'map(.ksu_resolved_hash = (if .ksu_hash == $ksu_ref then $resolved_sha else .ksu_hash end))')
+          merged_matrix=$(echo "$merged_matrix" | jq \
+            --arg resolved_sha "$resolved_sha" \
+            --arg ksu_ref "$ksu_ref" \
+            --argjson extra "$ksu_extra_json" \
+            'map(.ksu_resolved_hash = (if .ksu_hash == $ksu_ref then $resolved_sha else ($extra[.ksu_hash] // "unknown") end))')
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
-          PROJECT_ID="simonpunk%2fsusfs4ksu"
+          GITLAB_PROJECT_PATH="simonpunk/susfs4ksu"
           
           declare -A default_branches=(
             ["android12-5.10"]="gki-android12-5.10"
@@ -646,60 +448,142 @@ jobs:
           
           echo " Resolving SUSFS hashes for: ${active_keys[*]:-none}"
           
-          declare -A susfs_hashes
+          declare -A susfs_hashes           # "<key>"       -> sha used by unpinned devices
+          declare -A susfs_pin_hashes       # "<key>|<pin>" -> sha of that pin
+          declare -A susfs_versions_per_ref # "<ref>"       -> SUSFS_VERSION
+
+          MAX_RETRIES=3
+          RETRY_DELAY=5
+
+          # Resolve one GitLab ref. Sets RESOLVED_SHA / RESOLVED_VERSION in the
+          # caller's scope — deliberately not a command substitution, because
+          # array writes inside $( ) would be lost.
+          RESOLVED_SHA=""
+          RESOLVED_VERSION=""
+          resolve_susfs_ref() {
+            local ref="$1" label="$2" attempt=0 response sha ver query
+            RESOLVED_SHA=""
+            RESOLVED_VERSION=""
+            if [ "${{ inputs.make_release }}" = "true" ]; then
+              query="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${ref}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${ref}\") { nodes { rawBlob } } } } }"
+            else
+              query="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${ref}\") { sha } } } }"
+            fi
+            while [ "$attempt" -lt "$MAX_RETRIES" ]; do
+              response=$(curl -s --fail -G "https://gitlab.com/api/graphql" --data-urlencode "query=$query") || response=""
+              if [ -n "$response" ]; then
+                sha=$(echo "$response" | jq -r '.data.project.repository.ch.sha // empty')
+                if [ -n "$sha" ] && [ "$sha" != "null" ]; then
+                  RESOLVED_SHA="$sha"
+                  if [ "${{ inputs.make_release }}" = "true" ]; then
+                    ver=$(echo "$response" \
+                      | jq -r '.data.project.repository.blobs.nodes[0].rawBlob // empty' \
+                      | grep '#define SUSFS_VERSION' | awk -F'"' '{print $2}')
+                    RESOLVED_VERSION="${ver:-unknown}"
+                    echo " $label ($ref) → SUSFS_VERSION = $RESOLVED_VERSION"
+                  fi
+                  return 0
+                fi
+              fi
+              attempt=$((attempt + 1))
+              echo "::warning::GitLab GraphQL API failed for $label ($ref) (Attempt $attempt/$MAX_RETRIES). Retrying..."
+              sleep "$RETRY_DELAY"
+            done
+            return 1
+          }
+
           for key in "${active_keys[@]}"; do
             default_val="${default_branches[$key]}"
             user_val="${user_inputs[$key]:-$default_val}"
-            # If every device for this key pins its own susfs_hash, resolve the
-            # pin instead of the default branch (a renamed/deleted default
-            # branch must not break pinned builds).
-            pinned=$(echo "$merged_matrix" | jq -r --arg key "$key" '
-              [.[] | select(.susfs == true) | select((.android_version + "-" + .kernel_version) == $key) | .susfs_hash // empty]
-              | if (length > 0) and ((map(select(. == "")) | length) == 0) then .[0] else "" end')
-            query_val="${pinned:-$user_val}"
-            
-            MAX_RETRIES=3
-            RETRY_COUNT=0
-            RETRY_DELAY=5
-            resolved=""
-            
-            until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-              # We query the commit endpoint which accepts Branch, Tag, or SHA
-              RESULT=$(curl -s --fail "https://gitlab.com/api/v4/projects/${PROJECT_ID}/repository/commits/${user_val}")
-              EXIT_CODE=$?
-              
-              if [ $EXIT_CODE -eq 0 ] && [ -n "$RESULT" ]; then
-                resolved=$(echo "$RESULT" | jq -r '.id')
-                echo " Query for $key input field Success"
-                break
+
+            # Devices on this key that do NOT pin their own susfs_hash.
+            unpinned=$(echo "$merged_matrix" | jq -r --arg key "$key" '
+              [ .[] | select(.susfs == true)
+                    | select((.android_version + "-" + .kernel_version) == $key)
+                    | select((.susfs_hash // "") == "") ] | length')
+
+            # Distinct pins on this key.
+            mapfile -t key_pins < <(echo "$merged_matrix" | jq -r --arg key "$key" '
+              [ .[] | select(.susfs == true)
+                    | select((.android_version + "-" + .kernel_version) == $key)
+                    | .susfs_hash // empty ] | unique | .[]')
+
+            # The default ref is only needed when at least one device relies on
+            # it. When every device pins, a renamed or deleted default branch
+            # must not break the build.
+            if [ "$unpinned" -gt 0 ]; then
+              if resolve_susfs_ref "$user_val" "$key default"; then
+                susfs_hashes["$key"]="$RESOLVED_SHA"
+                [ -n "$RESOLVED_VERSION" ] && susfs_versions_per_ref["$user_val"]="$RESOLVED_VERSION"
+                echo " Resolved: $key default ($user_val) → $RESOLVED_SHA"
+              else
+                echo "::error::Could not resolve SUSFS ref '$user_val' for $key on GitLab."
+                exit 1
               fi
-              
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "::warning::GitLab API failed (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying..."
-              sleep $RETRY_DELAY
-            done
-            
-            # Final Validation
-            if [ -z "$resolved" ] || [ "$resolved" = "null" ]; then
-               echo "::error::Could not resolve SUSFS ref '$query_val' for $key on GitLab."
-               exit 1
             fi
-            
-            susfs_hashes["$key"]="$resolved"
-            echo " Resolved: $key → $resolved"
+
+            for pin in "${key_pins[@]}"; do
+              if resolve_susfs_ref "$pin" "$key pin"; then
+                susfs_pin_hashes["$key|$pin"]="$RESOLVED_SHA"
+                [ -n "$RESOLVED_VERSION" ] && susfs_versions_per_ref["$pin"]="$RESOLVED_VERSION"
+                echo " Resolved: $key pin ($pin) → $RESOLVED_SHA"
+                # Keep the per-key output meaningful when nothing uses the default.
+                [ "$unpinned" -eq 0 ] && susfs_hashes["$key"]="$RESOLVED_SHA"
+              else
+                echo "::error::Could not resolve pinned SUSFS ref '$pin' for $key on GitLab."
+                exit 1
+              fi
+            done
+
+            if [ -z "${susfs_hashes[$key]:-}" ]; then
+              echo "::error::No SUSFS ref resolved for $key."
+              exit 1
+            fi
           done
-          
+
           # Write CSV list of active GKI versions
           active_gki_keys_csv=$(IFS=','; echo "${active_keys[*]:-}")
           echo "active_gki_keys=$active_gki_keys_csv" >> "$GITHUB_OUTPUT"
-          
+
           # Write hash to GITHUB_OUTPUT
           echo "susfs_hash_android12_5_10=${susfs_hashes[android12-5.10]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android13_5_15=${susfs_hashes[android13-5.15]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android14_6_1=${susfs_hashes[android14-6.1]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
-          
+
+          # SUSFS_VERSION — only when releasing. Every ref actually compiled in
+          # (defaults and pins alike) must agree, otherwise the release tag
+          # would describe a version that is not in every zip.
+          if [ "${{ inputs.make_release }}" = "true" ]; then
+            susfs_base_version="unknown"
+            for ref in "${!susfs_versions_per_ref[@]}"; do
+              ver="${susfs_versions_per_ref[$ref]:-unknown}"
+              if [ "$ver" != "unknown" ]; then
+                susfs_base_version="$ver"
+                break
+              fi
+            done
+
+            if [ "$susfs_base_version" = "unknown" ]; then
+              echo "::error::Could not extract SUSFS_VERSION from susfs.h for any resolved ref. Cannot proceed with release."
+              exit 1
+            fi
+
+            # make_release=true: mismatch is a hard error — prevents wrong tag
+            for ref in "${!susfs_versions_per_ref[@]}"; do
+              ref_ver="${susfs_versions_per_ref[$ref]:-unknown}"
+              if [ "$ref_ver" != "$susfs_base_version" ]; then
+                echo "::error::SUSFS version mismatch: ref '$ref' has '$ref_ver', expected '$susfs_base_version'. Align refs before releasing."
+                exit 1
+              fi
+            done
+
+            # Ensure v prefix for standardized versioning
+            [[ "$susfs_base_version" != v* ]] && susfs_base_version="v$susfs_base_version"
+            echo "susfs_base_version=$susfs_base_version" >> "$GITHUB_OUTPUT"
+          fi
+
           # Inject susfs_resolved_hash into each device in the matrix
           susfs_hashes_json=$(jq -n \
             --arg a12 "${susfs_hashes[android12-5.10]:-unknown}" \
@@ -714,12 +598,40 @@ jobs:
               "android15-6.6": $a15,
               "android16-6.12": $a16
             }')
-          
+
+          susfs_pins_json=$(for k in "${!susfs_pin_hashes[@]}"; do
+            printf '%s\t%s\n' "$k" "${susfs_pin_hashes[$k]}"
+          done | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {(.[0]): .[1]}) | add // {}')
+
+          # Per device: a pin wins over the key default. Unpinned devices keep
+          # using the default ref, so one device pinning must never change what
+          # its neighbours compile in.
           merged_matrix=$(echo "$merged_matrix" | jq \
             --argjson hashes "$susfs_hashes_json" \
-            '[.[] | . + {susfs_resolved_hash: (if (.susfs_hash? // null) != null then .susfs_hash else ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown") end)}]')
+            --argjson pins "$susfs_pins_json" \
+            '[.[] | . + {susfs_resolved_hash: (
+                if (.susfs_hash? // "") != ""
+                then ($pins["\(.android_version)-\(.kernel_version)|\(.susfs_hash)"] // "unknown")
+                else ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")
+                end)}]')
           
-          # Recalculate wrapped with updated matrix and write output
+          merged_matrix=$(echo "$merged_matrix" | jq '
+            sort_by(
+              (.os_version | gsub("A"; "") | tonumber? // 0) * -1,
+              .model
+            )
+          ')
+          
+          # Split matrix by OOS version for better parallelism
+          matrix_A16=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A16")) | {include: .}')
+          matrix_A15=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A15")) | {include: .}')
+          matrix_A14=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A14")) | {include: .}')
+          
+          echo "matrix_A16=$matrix_A16" >> "$GITHUB_OUTPUT"
+          echo "matrix_A15=$matrix_A15" >> "$GITHUB_OUTPUT"
+          echo "matrix_A14=$matrix_A14" >> "$GITHUB_OUTPUT"
+          
+          # Maintain compatibility for existing job
           wrapped=$(jq -c '{ include: . }' <<< "$merged_matrix")
           echo "matrix=$wrapped" >> "$GITHUB_OUTPUT"
           

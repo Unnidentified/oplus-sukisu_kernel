@@ -1,8 +1,8 @@
 diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
-index 727eca153..fb0cae320 100644
+index fc65fc3..20d2b50 100644
 --- a/fs/proc/task_mmu.c
 +++ b/fs/proc/task_mmu.c
-@@ -1367,5 +1409,11 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+@@ -1438,6 +1438,12 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
  
  	vma_start = vma->vm_start;
  	do {
@@ -15,3 +15,17 @@ index 727eca153..fb0cae320 100644
  		smap_gather_stats(vma, &mss, 0);
  		last_vma_end = vma->vm_end;
  
+@@ -1502,6 +1508,13 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+ 			if (!vma)
+ 				break;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++			if (vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))) {
++				last_vma_end = vma->vm_end;
++				continue;
++			}
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++
+ 			/* Case 1 and 2 above */
+ 			if (vma->vm_start >= last_vma_end) {
+ 				smap_gather_stats(vma, &mss, 0);

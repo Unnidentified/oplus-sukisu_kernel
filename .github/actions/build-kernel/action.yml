@@ -1497,6 +1497,10 @@ runs:
         # GKI android16-6.12 (6.12.30+) refactored show_smaps_rollup(), so the two
         # SUS_MAP hunks for fs/proc/task_mmu.c reject on those bases. Apply the
         # adapted fix only when the original hunks actually rejected.
+        # The replacement carries BOTH checks: one at the top of the do-loop
+        # (normal path) and one after vma_next() inside the mmap_lock_is_contended
+        # block (lock was dropped and re-acquired). Dropping either one leaves
+        # SUS_MAP mappings visible in /proc/<pid>/smaps_rollup.
         if find "$COMMON_KERNEL_FOLDER" -name 'task_mmu.c.rej' -print | grep -q .; then
           task_mmu_fix="${GITHUB_ACTION_PATH}/patches/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
           if [ -f "$task_mmu_fix" ]; then

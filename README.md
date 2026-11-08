@@ -93,12 +93,17 @@ Things a current Android kernel normally has that this one does not. Listed so t
 | **LTO thin on 6.12** | Typically 2-5% on kernel workloads | Unknown — needs one test build via `lto_override` |
 | **`CONFIG_RANDOM_KMALLOC_CACHES`** | Randomises which kmalloc cache an allocation lands in, so a heap overflow has to guess. Upstream is renaming this to `KMALLOC_PARTITION_CACHES` | None; ~1% cost, needs measuring |
 | **`CONFIG_LIST_HARDENED`** | Catches linked-list corruption at the point it happens instead of at the crash | None; near-zero cost |
-| **`CONFIG_RANDOMIZE_KSTACK_OFFSET`** | Random per-syscall kernel stack offset, makes stack-based exploits unreliable | None; ~1% cost |
 | **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** | Zeroes freed heap memory, kills use-after-free info leaks | Perf cost is real; `INIT_ON_ALLOC_DEFAULT_ON` is already on |
 | **`CONFIG_ARM64_MTE`** | Memory tagging; GrapheneOS enables it for the kernel | Needs hardware support and a userspace that tolerates the tag checks |
 | **16 KB page size** | Required for new Android 16+ devices | Not a toggle — changing it breaks every existing binary on the device |
 
-None of these are enabled here. The hardening ones are cheap and measurable; the page-size one is not applicable to an existing device.
+Already on and easy to assume otherwise: `CONFIG_RANDOMIZE_KSTACK_OFFSET` defaults to `y` and both kernel trees select `HAVE_ARCH_RANDOMIZE_KSTACK_OFFSET`, so it is active without appearing in `gki_defconfig`.
+
+### The `opt` patch set is unverified
+
+`"opt": true` (currently only `OP15`) applies about thirty patches from `WildKernels/kernel_patches`, cloned from a moving branch at build time. None of them are in this repo, none are pinned, and nothing checks that they still apply — a break there surfaces as a failed build forty minutes in, not as a CI failure. `scripts/check-patches.sh` covers SUSFS, BORE and ADIOS only.
+
+That set is the next thing worth auditing: it is the largest unverified surface in the build, and it includes patches that change global behaviour (`force_tcp_nodelay`, `add_timeout_wakelocks_globally`, `disable_cache_hot_buddy`, the two `silence_*_logspam` ones) alongside genuinely useful ones (`optimise_memcmp`, `clear_page_16bytes_align`, `int_sqrt`).
 
 ---
 

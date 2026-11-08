@@ -837,7 +837,7 @@ jobs:
           debug: ${{ inputs.debug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
-          lto_override: ${{ inputs.lto_override == 'config' && '' || inputs.lto_override }}
+          lto_override: ${{ inputs.lto_override }}
 
   build-A15:
     name: build-A15 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
@@ -892,7 +892,7 @@ jobs:
           debug: ${{ inputs.debug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
-          lto_override: ${{ inputs.lto_override == 'config' && '' || inputs.lto_override }}
+          lto_override: ${{ inputs.lto_override }}
 
   build-A14:
     name: build-A14 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
@@ -947,7 +947,7 @@ jobs:
           debug: ${{ inputs.debug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
-          lto_override: ${{ inputs.lto_override == 'config' && '' || inputs.lto_override }}
+          lto_override: ${{ inputs.lto_override }}
 
   trigger-release:
     needs: [set-op-model, build-A16, build-A15, build-A14]

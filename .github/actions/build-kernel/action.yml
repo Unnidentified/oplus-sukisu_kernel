@@ -119,7 +119,15 @@ runs:
         set -euo pipefail
         echo '${{ inputs.op_config_json }}' > /tmp/config.json
         jq -r 'to_entries[] | "OP_\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "$GITHUB_ENV"
-        echo "OP_LTO_OVERRIDE=${{ inputs.lto_override }}" >> "$GITHUB_ENV"
+        # 'config' is the dispatch default and means "use the device's own
+        # setting". Normalise it to empty here rather than in the workflow
+        # expression: `cond && '' || value` returns `value` when the branch is
+        # empty, because '' is falsy in Actions expressions.
+        lto_override='${{ inputs.lto_override }}'
+        if [ "$lto_override" = "config" ]; then
+          lto_override=""
+        fi
+        echo "OP_LTO_OVERRIDE=$lto_override" >> "$GITHUB_ENV"
         echo "Parsed config:"
         jq '.' /tmp/config.json
 
@@ -273,8 +281,8 @@ runs:
         fi
 
         lto_override='${{ inputs.lto_override }}'
-        if [[ -n "$lto_override" && "$lto_override" != "none" && "$lto_override" != "thin" && "$lto_override" != "full" ]]; then
-          errors+=("Input 'lto_override' must be empty, 'thin', 'full' or 'none'. Got: '$lto_override'")
+        if [[ -n "$lto_override" && "$lto_override" != "config" && "$lto_override" != "none" && "$lto_override" != "thin" && "$lto_override" != "full" ]]; then
+          errors+=("Input 'lto_override' must be empty, 'config', 'thin', 'full' or 'none'. Got: '$lto_override'")
         fi
         
         if [[ -z "$uname" ]]; then
@@ -2660,16 +2668,6 @@ runs:
 
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" olddefconfig
 
-        if [ "${{ env.OP_AUTOFDO }}" = "true" ]; then
-          # gki_defconfig already enables this; verify rather than assume, so a
-          # base-tree change that drops it fails here instead of shipping a
-          # kernel that quietly lost its profile.
-          if ! grep -q '^CONFIG_AUTOFDO_CLANG=y' "$OUT/.config"; then
-            echo "::error::CONFIG_AUTOFDO_CLANG is not set in $OUT/.config. gki_defconfig should already enable it — if this fires, the pinned base tree changed."
-            exit 1
-          fi
-          echo " Verified: CONFIG_AUTOFDO_CLANG=y is active"
-        fi
         
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "============================================"
@@ -2687,7 +2685,41 @@ runs:
           echo " Verified: CONFIG_KSU_SUSFS=y and CONFIG_KSU_SUSFS_ENABLE_LOG=y are ACTIVE"
           echo "============================================"
         fi
-        
+
+        # Every feature below is requested by a config flag and applied by a
+        # patch or a defconfig append. olddefconfig silently drops anything
+        # whose dependencies are unmet, so a feature can be "enabled" in the
+        # config and absent from the kernel. Check the resolved .config rather
+        # than trusting the steps above.
+        echo "============================================"
+        echo " Auditing requested features in $OUT/.config"
+        echo "============================================"
+        audit_failed=0
+        audit() {
+          # audit <env-flag> <CONFIG_SYMBOL> <label> [only-for-kernel-version]
+          local want="$1" sym="$2" label="$3" only="${4:-}"
+          [ "$want" = "true" ] || return 0
+          if [ -n "$only" ] && [ "$KERNEL_VER" != "$only" ]; then
+            echo "   SKIP    $label (no patch for $KERNEL_VER)"
+            return 0
+          fi
+          if grep -q "^CONFIG_${sym}=y" "$OUT/.config"; then
+            echo "   OK      $label (CONFIG_${sym}=y)"
+          else
+            echo "::error::Requested feature is missing from the resolved config: $label (CONFIG_${sym} is not 'y')"
+            audit_failed=1
+          fi
+        }
+        audit "${OP_BORE:-false}"    SCHED_BORE         "BORE scheduler"      6.12
+        audit "${OP_ADIOS:-false}"   MQ_IOSCHED_ADIOS   "ADIOS I/O scheduler" 6.12
+        audit "${OP_DAMON:-false}"   DAMON              "DAMON"
+        audit "${OP_AUTOFDO:-false}" AUTOFDO_CLANG      "AutoFDO"             6.12
+        if [ "$audit_failed" -ne 0 ]; then
+          echo "::error::One or more requested features did not survive olddefconfig. Aborting rather than shipping a kernel that silently lacks them."
+          exit 1
+        fi
+        echo "============================================"
+
         KCFLAGS="$KCFLAGS -Wno-error -pipe ${KCFLAGS_EXTRA}"
         KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
         

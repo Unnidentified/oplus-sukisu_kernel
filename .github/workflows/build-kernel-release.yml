@@ -238,7 +238,10 @@ jobs:
           echo "ksu_options_normalized=$ksu_options_normalized" >> $GITHUB_OUTPUT
           
           echo "[" > matrix.json
-          mapfile -t all_json_files < <(find configs/ -name "*.json" -print0 | xargs -0 -n1)
+          # -mindepth 2 keeps configs/schema.json out. It has no "model" field,
+          # and the device filter below calls startswith() on .model, which
+          # aborts the whole matrix with "startswith() requires string inputs".
+          mapfile -t all_json_files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
           for i in "${!all_json_files[@]}"; do
             file="${all_json_files[$i]}"
             if [ -f "$file" ]; then

@@ -41,7 +41,7 @@ jobs:
           echo "susfs_hash_android16_6_12=acb92d4abc922cac384a207744b2db40281a7c7f" >> $GITHUB_OUTPUT
 
           echo "[" > matrix.json
-          mapfile -t all_json_files < <(find configs/ -name "*.json" -print0 | xargs -0 -n1)
+          mapfile -t all_json_files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
           for i in "${!all_json_files[@]}"; do
             file="${all_json_files[$i]}"
             if [ -f "$file" ]; then
@@ -108,7 +108,7 @@ jobs:
           echo "::group::Fetch susfs4ksu refs once"
           refs="${{ needs.generate-matrix.outputs.susfs_hash_android12_5_10 }} ${{ needs.generate-matrix.outputs.susfs_hash_android13_5_15 }} ${{ needs.generate-matrix.outputs.susfs_hash_android14_6_1 }} ${{ needs.generate-matrix.outputs.susfs_hash_android15_6_6 }} ${{ needs.generate-matrix.outputs.susfs_hash_android16_6_12 }}"
           # config-level pins (e.g. OP15-COS17's susfs_hash) are part of the matrix too
-          mapfile -t all_json_files < <(find configs/ -name "*.json" -print0 | xargs -0 -n1)
+          mapfile -t all_json_files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
           for f in "${all_json_files[@]}"; do
             h=$(jq -r '.susfs_hash // empty' "$f" 2>/dev/null || true)
             [ -n "$h" ] && refs="$refs $h"

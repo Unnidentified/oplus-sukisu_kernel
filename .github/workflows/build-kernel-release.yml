@@ -115,21 +115,6 @@ on:
           - builtin
           - lkm
         default: builtin
-      enable_wireguard:
-        description: ' Global Master Switch: Enable WireGuard for all models'
-        required: true
-        type: boolean
-        default: false
-      enable_battery_opt:
-        description: ' Global Master Switch: Enable Battery Optimization for all models'
-        required: true
-        type: boolean
-        default: false
-      enable_ntsync:
-        description: ' Global Master Switch: Enable NTSync for all models'
-        required: true
-        type: boolean
-        default: false
       optimize_level:
         description: "Compiler optimization level"
         required: true
@@ -429,10 +414,17 @@ jobs:
           for key in "${active_keys[@]}"; do
             default_val="${default_branches[$key]}"
             user_val="${user_inputs[$key]:-$default_val}"
+            # If every device for this key pins its own susfs_hash, resolve the
+            # pin instead of the default branch (a renamed/deleted default
+            # branch must not break pinned builds).
+            pinned=$(echo "$merged_matrix" | jq -r --arg key "$key" '
+              [.[] | select(.susfs == true) | select((.android_version + "-" + .kernel_version) == $key) | .susfs_hash // empty]
+              | if (length > 0) and ((map(select(. == "")) | length) == 0) then .[0] else "" end')
+            query_val="${pinned:-$user_val}"
             
             # Build GraphQL query — include blob fetch only when releasing
-            HASH_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${user_val}\") { sha } } } }"
-            RELEASE_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${user_val}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${user_val}\") { nodes { rawBlob } } } } }"
+            HASH_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${query_val}\") { sha } } } }"
+            RELEASE_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${query_val}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${query_val}\") { nodes { rawBlob } } } } }"
             
             if [ "${{ inputs.make_release }}" = "true" ]; then
               GL_QUERY="$RELEASE_QUERY"
@@ -471,7 +463,7 @@ jobs:
             
             # Final Validation — SUSFS hash
             if [ -z "$resolved" ] || [ "$resolved" = "null" ]; then
-              echo "::error::Could not resolve SUSFS ref '$user_val' for $key on GitLab."
+              echo "::error::Could not resolve SUSFS ref '$query_val' for $key on GitLab."
               exit 1
             fi
             
@@ -658,6 +650,13 @@ jobs:
           for key in "${active_keys[@]}"; do
             default_val="${default_branches[$key]}"
             user_val="${user_inputs[$key]:-$default_val}"
+            # If every device for this key pins its own susfs_hash, resolve the
+            # pin instead of the default branch (a renamed/deleted default
+            # branch must not break pinned builds).
+            pinned=$(echo "$merged_matrix" | jq -r --arg key "$key" '
+              [.[] | select(.susfs == true) | select((.android_version + "-" + .kernel_version) == $key) | .susfs_hash // empty]
+              | if (length > 0) and ((map(select(. == "")) | length) == 0) then .[0] else "" end')
+            query_val="${pinned:-$user_val}"
             
             MAX_RETRIES=3
             RETRY_COUNT=0
@@ -682,7 +681,7 @@ jobs:
             
             # Final Validation
             if [ -z "$resolved" ] || [ "$resolved" = "null" ]; then
-               echo "::error::Could not resolve SUSFS ref '$user_val' for $key on GitLab."
+               echo "::error::Could not resolve SUSFS ref '$query_val' for $key on GitLab."
                exit 1
             fi
             
@@ -1193,7 +1192,7 @@ jobs:
 
           - [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) ${ksu_ver_global}, compiled in-tree (\`builtin\`). Install the manager APK from its [releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).
           - [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) ${SUSFS_BASE_VERSION} — magic mount, SUS_PATH / SUS_MOUNT / SUS_KSTAT / SUS_MAP, uname & cmdline spoofing, open redirect.
-          - Network/misc tweaks: BBR/BBR3, TTL, IP set, Unicode bypass, battery/wakelock tuning.
+          - Network/misc tweaks: BBR/BBR3, TTL, IP set, Unicode bypass.
           - [Baseband Guard](https://github.com/vc-teahouse/Baseband-guard) stays disabled, so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains keep working.
 
           ## Flashing

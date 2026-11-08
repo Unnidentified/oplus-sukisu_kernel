@@ -333,7 +333,8 @@ jobs:
         run: |
           gh label create "notification" --color "BFD4F2" --repo ${{ github.repository }} --force || true
           DATE_TITLE="Kernel Updates - $(date +'%Y-%m-%d')"
-          ISSUE_NUMBER=$(gh issue list --repo ${{ github.repository }} --label "notification" --state "open" --search "$DATE_TITLE" --json number --jq '.[0].number')
+          ISSUE_NUMBER=$(gh issue list --repo ${{ github.repository }} --label "notification" --state "open" --search "$DATE_TITLE" --json number --jq '.[0].number // empty')
+          [ "$ISSUE_NUMBER" = "null" ] && ISSUE_NUMBER=""
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
           if [[ "${{ github.repository_owner }}" != "WildKernels" ]]; then

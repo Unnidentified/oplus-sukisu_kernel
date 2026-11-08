@@ -73,6 +73,16 @@ For ColorOS 17 (Android 17) on the OnePlus 15, build with `op_model: OP15-COS17`
 2. Flash the zip with [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher), [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher), or a custom recovery. In `lkm` mode the installer patches the ramdisk on-device via `ksud boot-patch`.
 3. Reboot, then install the SukiSU-Ultra manager APK.
 
+### Verifying a build
+
+Each release lists a `sha256` next to every zip. Check it before flashing:
+
+```sh
+sha256sum OP15-COS17_android16-6.12.69-SuSFS_v2.3.0.zip
+```
+
+Every zip also ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, and the image/zip checksums — so you can tell two builds of the same version apart.
+
 ---
 
 ## Notes

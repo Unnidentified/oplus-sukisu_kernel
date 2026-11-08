@@ -87,6 +87,33 @@ jobs:
       - name: python syntax
         run: python3 -m py_compile scripts/*.py
 
+      - name: build-info smoke test
+        run: |
+          # The writer derives the kernel source commit from the manifest, which
+          # is the only authoritative record of it. Assert it resolves for every
+          # manifest we ship, so a manifest rename cannot silently blank out
+          # build provenance.
+          set -euo pipefail
+          # Manifests live one directory deep (manifests/<os>/<name>.xml). Keep
+          # the top-level glob too in case one is ever added, but nullglob so an
+          # unmatched pattern is skipped instead of being passed through
+          # literally.
+          shopt -s nullglob
+          printf 'payload' > /tmp/fake.zip
+          count=0
+          for manifest in manifests/*.xml manifests/*/*.xml; do
+            python3 scripts/build-info.py \
+              --out /tmp/build-info.json \
+              --manifest "$manifest" \
+              --model OP-TEST --os-version A16 \
+              --android-version android16 --kernel-version 6.12 \
+              --zip /tmp/fake.zip > /dev/null
+            python3 -c 'import json,sys; k=json.load(open("/tmp/build-info.json"))["kernel"]; sys.exit(0 if k["source_url"] and k["source_ref"] else 1)' \
+              || { echo "::error::$manifest: kernel source did not resolve"; exit 1; }
+            count=$((count + 1))
+          done
+          echo "build-info resolved a kernel source for $count manifest(s)"
+
   patch-check:
     name: Patch dry-run (${{ matrix.label }})
     runs-on: ubuntu-latest

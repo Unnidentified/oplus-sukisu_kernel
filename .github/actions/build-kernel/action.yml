@@ -2384,6 +2384,13 @@ runs:
         
         export KCFLAGS="${KCFLAGS:-} $MAP $MPMAP $FPMAP -no-canonical-prefixes -fdiagnostics-color=never -Qunused-arguments -Wno-unused-command-line-argument -D__ANDROID_COMMON_KERNEL__"
         export KCPPFLAGS="${KCPPFLAGS:-} $MAP $MPMAP $FPMAP"
+
+        if [ "${OP_MLGO:-false}" = "true" ]; then
+          # MLGO: ML-guided register allocation (release advisor). Requires a
+          # clang built with +mlgo (our r547379 prebuilt is) — no external model.
+          export KCFLAGS="$KCFLAGS -mllvm -regalloc-enable-advisor=release"
+          echo " MLGO enabled: -mllvm -regalloc-enable-advisor=release"
+        fi
         
         export LLVM=1 LLVM_IAS=1
         export ARCH=arm64 SUBARCH=arm64

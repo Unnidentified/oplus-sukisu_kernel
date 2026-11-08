@@ -5,43 +5,36 @@ inputs:
   op_config_json:
     description: 'JSON string containing full device config'
     required: true
-    type: string
   ksu_type:
     description: 'Select root type: SukiSU-Ultra (default) or legacy KernelSU'
     required: true
-    type: choice
-    options:
-      - KSUN
-      - KSU
   ksu_branch_or_hash:
     description: 'Root branch or commit hash (empty = auto-detect by ksu_type)'
     required: false
-    type: string
     default: ""
   susfs_commit_hash_or_branch:
     description: 'SUSFS branch or commit hash (empty = auto-detect by kernel version)'
     required: false
-    type: string
     default: ""
   build_timestamp:
     description: 'Custom kernel build timestamp shown in uname -a (e.g. "Tue Feb 10 10:01:02 UTC 2026"). Leave empty to use the current build time.'
     required: false
-    type: string
     default: ''
   optimize_level:
     description: 'Compiler optimization level (O2 or O3)'
     required: false
-    type: string
     default: O2
   clean:
     description: 'Force clean build without ccache acceleration'
     required: false
-    type: boolean
     default: false
   debug:
     description: 'Enable dumping debug related artifacts'
     required: false
-    type: boolean
+    default: false
+  kmi_check_strict:
+    description: 'Fail the build when the KMI/ABI check finds missing or changed symbols (default: report only)'
+    required: false
     default: false
   github_token:
     description: 'GitHub Token'
@@ -49,7 +42,6 @@ inputs:
   ksu_mode:
     description: 'SukiSU-Ultra integration mode: lkm or builtin'
     required: false
-    type: string
     default: 'builtin'
 
 outputs:
@@ -2902,6 +2894,45 @@ runs:
         echo " SHA256: $ZIP_SHA256"
         echo "::endgroup::"
 
+    - name: KMI / ABI check
+      id: kmi_check
+      shell: bash
+      if: ${{ always() && steps.build_kernel_step.outcome == 'success' }}
+      run: |
+        set -euo pipefail
+        echo "::group::KMI / ABI check"
+        STG="$COMMON_KERNEL_FOLDER/gki/aarch64/abi.stg"
+        SYMVERS="$COMMON_KERNEL_FOLDER/out/Module.symvers"
+        REPORT="$GITHUB_WORKSPACE/kmi-report.txt"
+        CHECKER="${{ github.action_path }}/../../../scripts/kmi-check.py"
+
+        if [ ! -f "$STG" ]; then
+          echo " No gki/aarch64/abi.stg in this tree; skipping KMI check"
+          echo "::endgroup::"
+          exit 0
+        fi
+        if [ ! -f "$SYMVERS" ]; then
+          echo "::warning::No Module.symvers at $SYMVERS; skipping KMI check"
+          echo "::endgroup::"
+          exit 0
+        fi
+        if [ ! -f "$CHECKER" ]; then
+          echo "::warning::KMI checker not found at $CHECKER; skipping"
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        # Report-only unless kmi_check_strict is set: the CRC comparison has not
+        # been validated against a known-good build yet, so it must not gate.
+        strict=""
+        if [ "${{ inputs.kmi_check_strict }}" = "true" ]; then
+          strict="--strict"
+        fi
+
+        python3 "$CHECKER" --stg "$STG" --symvers "$SYMVERS" --report "$REPORT" $strict
+        echo " Report: $REPORT"
+        echo "::endgroup::"
+
     - name: Final Build Summary
       shell: bash
       run: |
@@ -3062,6 +3093,15 @@ runs:
         archive: false
         compression-level: 0
         retention-days: 90
+
+    - name: Upload KMI report
+      if: ${{ always() && !cancelled() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_kmi_report
+        path: ${{ github.workspace }}/kmi-report.txt
+        if-no-files-found: ignore
+        retention-days: 30
 
     - name: Upload ccache log
       if: success() && inputs.debug == 'true' && steps.build_kernel_step.conclusion == 'success'

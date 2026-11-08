@@ -1,0 +1,161 @@
+name: CI Checks
+
+# Static gates that run in minutes instead of after a 40-minute kernel build.
+# Nothing here compiles a kernel; it verifies that the inputs a build consumes
+# are still valid.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate build profiles
+        run: python3 scripts/validate-configs.py
+
+      - name: Validate workflow and action YAML
+        run: |
+          python3 - <<'PY'
+          import glob, sys, yaml
+          failed = False
+          for path in sorted(glob.glob('.github/workflows/*.yml') +
+                             glob.glob('.github/actions/*/action.yml') +
+                             glob.glob('.github/actions/*/*/action.yml')):
+              try:
+                  yaml.safe_load(open(path))
+              except Exception as exc:
+                  print(f"FAIL {path}: {exc}")
+                  failed = True
+          sys.exit(1 if failed else 0)
+          PY
+
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          # Structural problems (invalid action metadata, duplicate choice
+          # options, bad expressions) are fatal. The shellcheck codes below are
+          # a pre-existing backlog in the 3000-line build action — mostly
+          # unquoted variables — suppressed so this gate reports new problems
+          # instead of re-reporting the old ones. Burn the backlog down
+          # separately, then drop the matching -ignore line.
+          ./actionlint -color \
+            -ignore 'SC2086:.*' \
+            -ignore 'SC2034:.*' \
+            -ignore 'SC2129:.*' \
+            -ignore 'SC2016:.*' \
+            -ignore 'SC2001:.*' \
+            -ignore 'SC2059:.*' \
+            -ignore 'SC2193:.*' \
+            -ignore 'SC2181:.*' \
+            -ignore 'SC2163:.*'
+
+      - name: shellcheck scripts
+        run: shellcheck -s bash scripts/*.sh
+
+      - name: python syntax
+        run: python3 -m py_compile scripts/*.py
+
+  patch-check:
+    name: Patch dry-run (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    needs: select
+    if: needs.select.outputs.matrix != '{"include":[]}'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Apply patch sequence to the pinned base
+        run: ./scripts/check-patches.sh "${{ matrix.config }}"
+
+  select:
+    name: Select patch-check targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Pick profiles that exercise repo-local patches
+        id: pick
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import glob, json, os
+
+          entries = []
+          for path in sorted(glob.glob("configs/*/*.json")):
+              if path.endswith("schema.json"):
+                  continue
+              cfg = json.load(open(path))
+              # Profiles whose build applies a patch we maintain in this repo.
+              if cfg.get("bore") or cfg.get("adios") or cfg.get("susfs_hash"):
+                  entries.append({"label": cfg["model"], "config": path})
+
+          # One canary per kernel source that relies on the default SUSFS ref,
+          # so a moved default branch is caught before it reaches a build.
+          seen = set()
+          for path in sorted(glob.glob("configs/*/*.json")):
+              if path.endswith("schema.json"):
+                  continue
+              cfg = json.load(open(path))
+              if not cfg.get("susfs") or cfg.get("susfs_hash"):
+                  continue
+              key = (cfg["android_version"], cfg["kernel_version"])
+              if key in seen:
+                  continue
+              seen.add(key)
+              entries.append({"label": f"{cfg['model']}-default", "config": path})
+
+          print("matrix=" + json.dumps({"include": entries}))
+          PY
+
+  checkpatch:
+    name: checkpatch (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch checkpatch.pl from the pinned GKI base
+        run: |
+          set -euo pipefail
+          commit=$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          for project in ET.parse("manifests/a16/oneplus_15_6.12.69_gki_w.xml").getroot().findall("project"):
+              if project.get("name") == "kernel/common":
+                  print(project.get("revision"))
+                  break
+          PY
+          )
+          git init -q kc
+          git -C kc remote add origin https://android.googlesource.com/kernel/common
+          git -C kc fetch -q --depth 1 --filter=blob:none origin "$commit"
+          git -C kc checkout -q FETCH_HEAD -- scripts/checkpatch.pl scripts/spelling.txt
+
+      - name: Run checkpatch on hand-ported patches
+        run: |
+          set -uo pipefail
+          for patch in .github/actions/build-kernel/patches/*.patch; do
+            echo "### $(basename "$patch")"
+            perl kc/scripts/checkpatch.pl --no-tree --strict --terse \
+              --ignore FILE_PATH_CHANGES,SPDX_LICENSE_TAG < "$patch" || true
+            echo
+          done
+          # Advisory only: the hand-ported patches are out-of-tree by design and
+          # will never be style-clean. Surface the findings, do not gate on them.
+          exit 0

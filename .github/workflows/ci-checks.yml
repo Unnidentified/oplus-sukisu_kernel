@@ -94,6 +94,11 @@ jobs:
           # manifest we ship, so a manifest rename cannot silently blank out
           # build provenance.
           set -euo pipefail
+          # Manifests live one directory deep (manifests/<os>/<name>.xml). Keep
+          # the top-level glob too in case one is ever added, but nullglob so an
+          # unmatched pattern is skipped instead of being passed through
+          # literally.
+          shopt -s nullglob
           printf 'payload' > /tmp/fake.zip
           count=0
           for manifest in manifests/*.xml manifests/*/*.xml; do

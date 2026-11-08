@@ -27,6 +27,44 @@ jobs:
       - name: Validate build profiles
         run: python3 scripts/validate-configs.py
 
+      - name: Matrix generation smoke test
+        run: |
+          set -euo pipefail
+          # Mirrors the matrix build in build-kernel-release.yml. A JSON file
+          # under configs/ without a string "model" makes the device filter
+          # abort with "startswith() requires string inputs" — which is how
+          # configs/schema.json took down every device-specific build.
+          echo "[" > /tmp/matrix.json
+          mapfile -t files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
+          for i in "${!files[@]}"; do
+            jq -r '.' "${files[$i]}" >> /tmp/matrix.json
+            if [ $((i+1)) -lt ${#files[@]} ]; then echo "," >> /tmp/matrix.json; fi
+          done
+          echo "]" >> /tmp/matrix.json
+
+          total=$(jq 'length' /tmp/matrix.json)
+          if [ "$total" -eq 0 ]; then
+            echo "::error::matrix is empty"
+            exit 1
+          fi
+
+          missing=$(jq '[.[] | select((.model | type) != "string")] | length' /tmp/matrix.json)
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::$missing config(s) under configs/<os>/ have no string 'model' field"
+            exit 1
+          fi
+
+          # Every model must survive the device filter the workflow applies.
+          while read -r model; do
+            n=$(jq --arg m "$model" 'map(select(.model == $m or (.model | startswith($m + "-")))) | length' /tmp/matrix.json)
+            if [ "$n" -eq 0 ]; then
+              echo "::error::device filter for '$model' matches nothing"
+              exit 1
+            fi
+          done < <(jq -r '.[].model' /tmp/matrix.json | sort -u)
+
+          echo "matrix generation ok: $total profiles"
+
       - name: Validate workflow and action YAML
         run: |
           python3 - <<'PY'

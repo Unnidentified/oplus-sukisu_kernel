@@ -121,7 +121,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 44,
-      "description": "UNAME_BRAND. Either a short brand string (e.g. SakFi-OP) or a full uname -r spoof (e.g. 6-g242e1a07f878-ab15865446-4k). The two meanings are not interchangeable."
+      "description": "Appended to the kernel release string as LOCALVERSION, so uname -r becomes '<kernel version>-<android_version>-<uname>'. Two distinct uses, chosen deliberately: a short brand string (e.g. SakFi-OP) marks the build visibly; a full stock-style suffix (e.g. 6-g242e1a07f878-ab15865446-4k) makes uname -r indistinguishable from a stock OnePlus kernel. A brand string defeats the spoof, a spoof string hides the brand. LOCALVERSION_AUTO is disabled, so no git hash is appended after it."
     },
     "bore": {
       "type": "boolean",

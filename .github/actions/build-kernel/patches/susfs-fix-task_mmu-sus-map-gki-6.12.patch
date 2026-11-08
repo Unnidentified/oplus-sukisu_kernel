@@ -1,3 +1,22 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] fs/proc/task_mmu: re-apply both SUS_MAP checks for 6.12.30+
+
+Derived from the two SUS_MAP hunks in susfs4ksu's
+kernel_patches/50_add_susfs_in_gki-android16-6.12.patch.
+
+GKI android16-6.12 (6.12.30+) refactored show_smaps_rollup(), so those two
+hunks reject on our base. This re-applies them against the refactored
+function. Both checks are required:
+
+  1. at the top of the do-loop, for the normal path
+  2. after vma_next() inside the mmap_lock_is_contended block, because the
+     lock was dropped and re-acquired, so the vma may have been replaced
+
+Dropping either one leaves SUS_MAP mappings visible in
+/proc/<pid>/smaps_rollup.
+
+The build applies this only when fs/proc/task_mmu.c.rej exists.
+
 diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
 index fc65fc3..20d2b50 100644
 --- a/fs/proc/task_mmu.c

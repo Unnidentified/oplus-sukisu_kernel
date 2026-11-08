@@ -1,0 +1,125 @@
+name: Scheduled Workflow Failure Notify
+
+# The OnePlusOSS kernel monitor ran every 12 hours and failed silently for
+# weeks because nothing watched it. A red run in the Actions tab is not a
+# notification. This watches the scheduled workflows and pushes failures to
+# Telegram, which is where the release announcements already go.
+#
+# workflow_run (not a step inside each workflow) so the scheduled workflows
+# stay untouched and a failure in any of them is caught the same way.
+
+on:
+  workflow_run:
+    workflows:
+      - Cache Warmer
+      - Check for New OnePlus Devices
+      - ToolChains Generator
+      - OnePlusOSS Kernel Monitor
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Run ID to report on (leave empty to send a test message)'
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  notify:
+    name: Report failure
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'timed_out'
+    steps:
+      - name: Send failure notification
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GROUP_ID: ${{ secrets.TELEGRAM_GROUP }}
+          CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          WF_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WF_EVENT: ${{ github.event.workflow_run.event }}
+          WF_URL: ${{ github.event.workflow_run.html_url }}
+          WF_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WF_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -uo pipefail
+
+          if [ -n "${INPUT_RUN_ID:-}" ]; then
+            WF_RUN_ID="$INPUT_RUN_ID"
+            WF_NAME="Manual check"
+            WF_CONCLUSION="unknown"
+            WF_EVENT="workflow_dispatch"
+            WF_URL="https://github.com/$REPO/actions/runs/$WF_RUN_ID"
+            WF_BRANCH=""
+          fi
+
+          if [ -z "${WF_RUN_ID:-}" ]; then
+            echo "No run to report on; sending a test message."
+            WF_NAME="Test message"
+            WF_CONCLUSION="test"
+            WF_EVENT="workflow_dispatch"
+            WF_URL="https://github.com/$REPO/actions"
+            WF_BRANCH=""
+          fi
+
+          # Which jobs actually failed. Best-effort: the API can be flaky and a
+          # missing list must not stop the notification.
+          failed_jobs=""
+          if [ -n "${WF_RUN_ID:-}" ]; then
+            failed_jobs=$(gh api "repos/$REPO/actions/runs/$WF_RUN_ID/jobs" \
+              --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | .name] | join(", ")' \
+              2>/dev/null || true)
+          fi
+
+          MESSAGE=$(cat <<EOF
+          <b>Scheduled workflow failed</b>
+
+          <b>Workflow:</b> ${WF_NAME}
+          <b>Result:</b> ${WF_CONCLUSION}
+          <b>Trigger:</b> ${WF_EVENT}
+          <b>Branch:</b> ${WF_BRANCH:-n/a}
+          <b>Failed jobs:</b> ${failed_jobs:-unknown}
+
+          <a href="${WF_URL}">Open the run</a>
+          EOF
+          )
+
+          echo "$MESSAGE"
+          {
+            echo "### Scheduled workflow failure"
+            echo ""
+            echo "$MESSAGE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "${BOT_TOKEN:-}" ]; then
+            echo "::warning::TELEGRAM_BOT_TOKEN is not set; the failure was recorded in the step summary only."
+            exit 0
+          fi
+
+          sent=0
+          for chat_id in "${GROUP_ID:-}" "${CHANNEL_ID:-}"; do
+            [ -n "$chat_id" ] || continue
+            echo "Sending to $chat_id..."
+            if curl -fsS -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+                 --data-urlencode "chat_id=$chat_id" \
+                 --data-urlencode "text=$MESSAGE" \
+                 --data-urlencode "parse_mode=HTML" \
+                 --data-urlencode "disable_web_page_preview=true" > /dev/null; then
+              sent=$((sent + 1))
+            else
+              echo "::warning::Telegram send failed for chat $chat_id"
+            fi
+          done
+
+          if [ "$sent" -eq 0 ]; then
+            echo "::warning::No Telegram chat configured (TELEGRAM_GROUP / TELEGRAM_CHANNEL); the failure was recorded in the step summary only."
+          fi

@@ -1570,41 +1570,42 @@ runs:
             fi
           fi
         fi
-        find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" -delete 2>/dev/null || true
-        # Verify no patch rejects (.rej) exist
-        rej_count=0
-        for dir in "$COMMON_KERNEL_FOLDER" "${KSUN_FOLDER:-}" "${KSU_FOLDER:-}"; do
-          if [ -n "$dir" ] && [ -d "$dir" ]; then
-            if find "$dir" -name "*.rej" -print | grep -q .; then
-              echo "::error::SUSFS patches did not apply cleanly in $dir! Found .rej files:"
-              find "$dir" -name "*.rej" -exec echo "REJECT: {}" \;
-              
-              echo "::group::Detailed reject file contents from $dir"
-              find "$dir" -name "*.rej" | while read -r rej_file; do
-                echo "------------------------------------------------------------"
-                echo "Reject file: $rej_file"
-                echo "------------------------------------------------------------"
-                sed -n '1,120p' "$rej_file" 2>/dev/null || cat "$rej_file" 2>/dev/null || true
-              done
-              echo "::endgroup::"
+        # Verify no patch rejects (.rej) survived. This MUST run before the
+        # cleanup below: deleting the .rej files first made this check dead
+        # code, so the build silently accepted rejects and carried on with
+        # SUSFS hooks missing from the kernel.
+        #
+        # $KERNEL_PLATFORM_FOLDER is the superset — KernelSU and KernelSU-Next
+        # both live inside it — so one scan covers every tree we patch.
+        rej_files=$(find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" 2>/dev/null | sort || true)
+        if [ -n "$rej_files" ]; then
+          echo "::error::SUSFS / SukiSU-Ultra patches did not apply cleanly. Found .rej files:"
+          printf '%s\n' "$rej_files" | sed 's/^/REJECT: /'
 
-              # Copy rejects to a folder for artifact upload
-              mkdir -p "$GITHUB_WORKSPACE/patch_rejects"
-              find "$dir" -name "*.rej" | while read -r rej_file; do
-                rel_path="${rej_file#$GITHUB_WORKSPACE/}"
-                dest_dir="$GITHUB_WORKSPACE/patch_rejects/$(dirname "$rel_path")"
-                mkdir -p "$dest_dir"
-                cp "$rej_file" "$dest_dir/"
-              done
-              
-              rej_count=$((rej_count + 1))
-            fi
-          fi
-        done
-        if [ "$rej_count" -gt 0 ]; then
+          echo "::group::Detailed reject file contents"
+          printf '%s\n' "$rej_files" | while read -r rej_file; do
+            echo "------------------------------------------------------------"
+            echo "Reject file: $rej_file"
+            echo "------------------------------------------------------------"
+            sed -n '1,120p' "$rej_file" 2>/dev/null || true
+          done
+          echo "::endgroup::"
+
+          # Copy rejects out for the artifact upload step.
+          mkdir -p "$GITHUB_WORKSPACE/patch_rejects"
+          printf '%s\n' "$rej_files" | while read -r rej_file; do
+            rel_path="${rej_file#$GITHUB_WORKSPACE/}"
+            dest_dir="$GITHUB_WORKSPACE/patch_rejects/$(dirname "$rel_path")"
+            mkdir -p "$dest_dir"
+            cp "$rej_file" "$dest_dir/"
+          done
+
           echo "::error::One or more SUSFS / SukiSU-Ultra patches created .rej files. Aborting build."
           exit 1
         fi
+
+        # Only now is it safe to clear any stragglers.
+        find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" -delete 2>/dev/null || true
         
         echo " SUSFS patches applied"
         
@@ -2291,6 +2292,15 @@ runs:
         if [ "$UNAME_BRAND" = "OP-WILD" ]; then
           UNAME_BRAND="SakFi-OP"
         fi
+        # OP_UNAME is appended verbatim as LOCALVERSION, giving
+        #   uname -r = <kernel version>-<android_version>-<OP_UNAME>
+        # It carries two different meanings depending on the profile:
+        #   SakFi-OP                      -> a visible brand marker
+        #   6-g242e1a07f878-ab15865446-4k -> a stock-style suffix that makes
+        #                                    uname -r indistinguishable from a
+        #                                    stock OnePlus kernel
+        # Both are legitimate; they are not interchangeable. See the `uname`
+        # description in configs/schema.json.
         CUSTOM_LOCALVERSION="-${ANDROID_VER}-${UNAME_BRAND}"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
 

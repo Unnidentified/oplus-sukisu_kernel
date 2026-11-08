@@ -1,3 +1,20 @@
+From: simonpunk (susfs4ksu)
+Subject: [PATCH] susfs: overlay selinux_hide + priority_uid_filter kernel files
+
+Source:  https://gitlab.com/simonpunk/susfs4ksu
+Commit:  15890c612d4a2ff37557a0aafe4189451859771b
+         "kernel & KernelSU: Refactor selinux_hide(experimental, partially
+          done); Sync with upstream"
+
+The pinned SUSFS checkout (acb92d4) is the last commit whose 50_add_susfs
+patch applies to our kernel base, but SukiSU-Ultra 'builtin' links against
+susfs_add_sus_type() and susfs_add_sus_avd_allowed_by_type(), which were
+only added to fs/susfs.c afterwards. The delta is purely additive, so it is
+carried as an overlay applied to the SUSFS source tree before the kernel
+patch runs.
+
+Applied only when it applies cleanly; skipped otherwise.
+
 diff --git a/kernel_patches/fs/susfs.c b/kernel_patches/fs/susfs.c
 index 1e70f7f..2919b8d 100644
 --- a/kernel_patches/fs/susfs.c

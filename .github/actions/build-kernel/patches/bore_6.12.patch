@@ -9,6 +9,24 @@ consuming a reserve slot with a typed member churns every task_struct-referencin
 CRC (~11k) incl. the Rust bindings_raw crate. Keeping sched_entity's DWARF byte-
 identical -> 0 CRC. CONFIG_SCHED_BORE=y.
 
+Deliberate divergence from EEVDF: base_slice loses its CPU-count scaling.
+Upstream EEVDF derives the slice from normalized_sysctl_sched_base_slice via
+get_update_sysctl_factor(), which multiplies by (1 + ilog2(ncpus)) so the slice
+grows with core count. Under CONFIG_SCHED_BORE this patch drops that path
+entirely: normalized_sysctl_sched_base_slice and get_update_sysctl_factor() are
+compiled out, and update_sysctl() instead computes
+
+    sysctl_sched_base_slice = nsecs_per_tick *
+        max(1, DIV_ROUND_UP(sysctl_sched_min_base_slice, nsecs_per_tick))
+
+i.e. a fixed multiple of the tick, independent of core count. This is BORE's
+design, not an accident of the port: BORE replaces EEVDF's virtual-deadline
+slice with a tick-quantised minimum slice, and scaling it by core count would
+defeat the point. The consequence is that a 6.12 BORE kernel does not behave
+like a stock 6.12 kernel for sched_base_slice on big-core-count SoCs, so any
+tuning that assumes the EEVDF formula will be wrong here. CONFIG_MIN_BASE_SLICE_NS
+is the knob to tune instead.
+
 diff --git a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 new file mode 100644
 index 0000000..476636d

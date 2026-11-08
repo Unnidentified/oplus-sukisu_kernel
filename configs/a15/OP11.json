@@ -15,6 +15,7 @@
   "disk_cleanup": false,
   "hmbird": false,
   "susfs": true,
+  "susfs_hash": "8c4fa71fea30c0ced6567d152e637d2b649e8e5c",
   "opt": true,
   "ds": true,
   "bbg": true,

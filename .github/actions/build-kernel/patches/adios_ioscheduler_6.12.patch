@@ -1,3 +1,35 @@
+From: Masahito Suzuki <firelzrd@gmail.com> (ADIOS 3.1.9)
+Subject: [PATCH] block: ADIOS 3.1.9 for android16-6.12
+
+Upstream:        https://github.com/firelzrd/adios
+Upstream commit: d2b3a8b8f1bf24cd2b8d54504adb34c88a473984
+                 "ADIOS v3.1.9 (stable) for Linux 6.12.44, 6.18.3, 6.19-rc1"
+Upstream file:   patches/stable/0001-linux6.12.44-ADIOS-3.1.9.patch
+License:         GPL-2.0 (SPDX header retained in block/adios.c)
+
+Local changes against upstream, all deliberate:
+
+- MQ_IOSCHED_ADIOS default m -> y. Built in, not a module: the GKI build has
+  no module load path for a scheduler, and CONFIG_MQ_IOSCHED_DEFAULT_ADIOS
+  depends on MQ_IOSCHED_ADIOS=y.
+- Dropped the out-of-tree `all:` / `clean:` stanza from block/Makefile. It
+  builds against /lib/modules/$(uname -r)/build, which does not exist in the
+  GKI tree.
+- add_to_dl_tree(): on kmem_cache_zalloc() failure, fall back to the priority
+  queue instead of returning with the request unqueued. Upstream drops the
+  request under memory pressure.
+- insert_to_prio_queue() and both insert paths: tolerate a NULL
+  adios_rq_data (prepare-time allocation failure) and dispatch the request
+  unmanaged rather than dereferencing NULL.
+- adios_complete_request(): early-return for unmanaged requests, which were
+  never accounted for.
+- seek_distance weighting: guard __builtin_clzll(0), which is undefined
+  behaviour. A zero seek is sequential, so weight 1.
+- is_rotational: use !blk_queue_nonrot(q). BLK_FEAT_ROTATIONAL does not
+  exist on 6.12.
+- Stripped the mail header and the `-- 2.34.1` signature so the file applies
+  with `patch -p1` directly.
+
 diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
 index 27f11320b8d12..e98585dd83e0f 100644
 --- a/block/Kconfig.iosched

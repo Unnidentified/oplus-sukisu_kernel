@@ -1,5 +1,8 @@
 # oplus-sukisu_kernel
 
+[![Build and Release OnePlus Kernels](https://github.com/Unnidentified/oplus-sukisu_kernel/actions/workflows/build-kernel-release.yml/badge.svg)](https://github.com/Unnidentified/oplus-sukisu_kernel/actions/workflows/build-kernel-release.yml)
+[![CI Checks](https://github.com/Unnidentified/oplus-sukisu_kernel/actions/workflows/ci-checks.yml/badge.svg)](https://github.com/Unnidentified/oplus-sukisu_kernel/actions/workflows/ci-checks.yml)
+
 OnePlus GKI kernels built in CI with [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) (SUSFS integrated) instead of KernelSU-Next. Fork of [sakfi/OP_KSUN_FS](https://github.com/sakfi/OP_KSUN_FS), kept in sync with upstream.
 
 No local toolchain needed: pick your device in GitHub Actions, and the kernel is compiled, patched and packaged as a flashable AnyKernel3 zip.
@@ -62,6 +65,18 @@ Per-device configs live in [`configs/`](configs), kernel source manifests in [`m
 | OOS 16 | 6.1 / 6.6 / 6.12 | OnePlus 13, 13S, 15, 15R, 15T, Ace 6, Turbo 6, Pad 2/3/4 |
 
 Everything is built from [OnePlus's official kernel sources](https://github.com/OnePlusOSS/), so the zips target stock ROMs. Don't flash a zip across a major OTA (e.g. A15 to A16) without checking — the KMI has to match.
+
+### Known-unbuildable profiles
+
+These configs are present but cannot currently be built: no commit on the matching `susfs4ksu` branch has a `50_add_susfs` patch that applies to their kernel base. The CI patch dry-run reports them as warnings rather than failures.
+
+| Profile | KMI | Failing files |
+|---|---|---|
+| `OP-ACE-3-PRO` | android14-6.1 | `fs/namespace.c`, `fs/proc/base.c` |
+| `OP-ACE-5-PRO-6.6.30` | android15-6.6 | `fs/namespace.c`, `fs/proc/base.c` |
+| `OP11` (A16 / `oneplus_11_w.xml`) | android13-5.15 | `fs/namespace.c`, `fs/proc/task_mmu.c` |
+
+The A14 and A15 `OP11` profiles are pinned to `8c4fa71` and do build. Fixing the rest needs either a SUSFS patch rebased onto those bases or version-specific fixups in the build — neither exists today.
 
 For ColorOS 17 (Android 17) on the OnePlus 15, build with `op_model: OP15-COS17` (keep `android_version_filter: A16`, `kernel_version_filter: android16-6.12`). That profile (`configs/a16/OP15-COS17.json`) compiles the AOSP GKI `android16-6.12.69` common with OnePlus's sm8850 modules/devicetree, giving KMI `android16-6` — the same generation as ColorOS 17's stock `6.12.x-android16-6` kernel — so the zip boots on ColorOS 17. The `OP15` profile stays on OnePlus's 16.0.0 common (`6.12.23-android16-5`) and remains the one for ColorOS/OxygenOS 16.
 

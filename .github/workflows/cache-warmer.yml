@@ -90,13 +90,64 @@ jobs:
           retention-days: 1
           if-no-files-found: warn
 
+  prepare-susfs:
+    name: Prepare SUSFS source (fetch once)
+    runs-on: ubuntu-latest
+    needs: generate-matrix
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            configs/
+          sparse-checkout-cone-mode: false
+
+      - name: Fetch all SUSFS refs once
+        run: |
+          set -uo pipefail
+          echo "::group::Fetch susfs4ksu refs once"
+          refs="${{ needs.generate-matrix.outputs.susfs_hash_android12_5_10 }} ${{ needs.generate-matrix.outputs.susfs_hash_android13_5_15 }} ${{ needs.generate-matrix.outputs.susfs_hash_android14_6_1 }} ${{ needs.generate-matrix.outputs.susfs_hash_android15_6_6 }} ${{ needs.generate-matrix.outputs.susfs_hash_android16_6_12 }}"
+          # config-level pins (e.g. OP15-COS17's susfs_hash) are part of the matrix too
+          mapfile -t all_json_files < <(find configs/ -name "*.json" -print0 | xargs -0 -n1)
+          for f in "${all_json_files[@]}"; do
+            h=$(jq -r '.susfs_hash // empty' "$f" 2>/dev/null || true)
+            [ -n "$h" ] && refs="$refs $h"
+          done
+          # branch names, for builds that resolve by branch
+          refs="$refs gki-android12-5.10 gki-android13-5.15 gki-android14-6.1 gki-android15-6.6 gki-android16-6.12"
+          refs=$(echo "$refs" | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' ')
+          git init -q susfs4ksu
+          cd susfs4ksu
+          git config advice.detachedHead false
+          git remote add origin "https://gitlab.com/simonpunk/susfs4ksu.git"
+          ok=0
+          for ref in $refs; do
+            echo " fetching $ref"
+            if git fetch -q --depth 1 origin "$ref" 2>/dev/null || git fetch -q --depth 50 origin "$ref" 2>/dev/null; then
+              ok=$((ok+1))
+            else
+              echo "  failed: $ref"
+            fi
+          done
+          echo " fetched $ok refs into one shared checkout"
+          [ "$ok" -gt 0 ]
+          echo "::endgroup::"
+
+      - name: Upload SUSFS source artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: susfs4ksu-src
+          path: susfs4ksu
+          retention-days: 1
+          if-no-files-found: error
+
   warm-cache:
     name: ${{ matrix.model }} (${{ matrix.os_version }})
-    needs: [generate-matrix, prepare_ccache]
+    needs: [generate-matrix, prepare_ccache, prepare-susfs]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 2
       matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
     steps:
       - name: Checkout Code
@@ -205,6 +256,13 @@ jobs:
             echo "ccache not found, skipping configuration."
           fi
           echo "::endgroup::"
+
+      - name: Get prebuilt SUSFS source (shared, avoids per-job GitLab fetches)
+        uses: actions/download-artifact@v4
+        with:
+          name: susfs4ksu-src
+          path: .
+        continue-on-error: true
 
       - name: Warm Build
         uses: ./.github/actions/build-kernel

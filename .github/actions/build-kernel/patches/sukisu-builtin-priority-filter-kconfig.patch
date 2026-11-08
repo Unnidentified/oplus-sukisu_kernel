@@ -1,3 +1,13 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] KernelSU: add KSU_SUSFS_PRIORITY_UID_FILTER Kconfig
+
+Companion to sukisu-builtin-priority-filter-stub.patch: the builtin tree
+references the priority uid filter, but the SUSFS version we build against
+does not define its Kconfig symbol. Declare it here, default n, so the
+feature stays off unless explicitly enabled.
+
+Local compatibility shim, not an upstream patch.
+
 diff --git a/kernel/Kconfig b/kernel/Kconfig
 index db57137..bb67381 100644
 --- a/kernel/Kconfig

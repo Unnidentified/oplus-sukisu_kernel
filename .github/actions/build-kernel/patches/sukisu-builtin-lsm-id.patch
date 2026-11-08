@@ -1,3 +1,14 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] KernelSU: pass struct lsm_id to security_add_hooks() on 6.7+
+
+SukiSU-Ultra's builtin branch still calls
+security_add_hooks(hooks, count, "ksu"). Kernels >= 6.7 take a
+const struct lsm_id * instead, so the builtin tree does not compile on
+android16-6.12 without this.
+
+Local compatibility shim, not an upstream patch. Applied only when it
+applies cleanly, so it is a no-op on older trees.
+
 --- a/kernel/hook/lsm_hook.c
 +++ b/kernel/hook/lsm_hook.c
 @@ -186,10 +186,21 @@ static struct security_hook_list ksu_hooks[] = {

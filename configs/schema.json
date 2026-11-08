@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Unnidentified/oplus-sukisu_kernel/configs/schema.json",
+  "title": "OnePlus kernel build profile",
+  "description": "One file per buildable device under configs/<aNN>/. Every key is mapped to an OP_<KEY> environment variable by the build action, so adding a key here means adding a consumer in .github/actions/build-kernel/action.yml.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "model",
+    "soc",
+    "branch",
+    "manifest",
+    "android_version",
+    "kernel_version",
+    "os_version",
+    "lto",
+    "zyc_compiler",
+    "c_compiler",
+    "rust_compiler",
+    "bindgen",
+    "rust_build",
+    "disk_cleanup",
+    "hmbird",
+    "susfs",
+    "opt",
+    "ds",
+    "bbg",
+    "bbr",
+    "bbr3",
+    "ttl",
+    "ip_set",
+    "unicode",
+    "ntsync",
+    "blacklist_modules",
+    "uname"
+  ],
+  "properties": {
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Device identifier. Must match the op_model workflow choice, or be that choice plus a '-' suffix (op_model=OP15 selects OP15 and OP15-COS17)."
+    },
+    "soc": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SoC codename, e.g. canoe."
+    },
+    "branch": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$",
+      "description": "WildKernels kernel_patches branch, e.g. wild/sm8850."
+    },
+    "manifest": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+\\.xml$",
+      "description": "Repo manifest under manifests/<aNN>/."
+    },
+    "android_version": {
+      "type": "string",
+      "enum": ["android12", "android13", "android14", "android15", "android16"]
+    },
+    "kernel_version": {
+      "type": "string",
+      "enum": ["5.10", "5.15", "6.1", "6.6", "6.12"]
+    },
+    "os_version": {
+      "type": "string",
+      "enum": ["A14", "A15", "A16"],
+      "description": "OxygenOS/ColorOS major version. Drives the matrix split and the release grouping."
+    },
+    "lto": {
+      "type": "string",
+      "enum": ["none", "thin", "full"]
+    },
+    "zyc_compiler": {
+      "type": "string",
+      "description": "Optional Zyc compiler path; empty means unused."
+    },
+    "c_compiler": {
+      "type": "string",
+      "description": "Clang bin directory, relative to the kernel platform root."
+    },
+    "rust_compiler": {
+      "type": "string",
+      "description": "Rust toolchain bin directory, relative to the kernel platform root."
+    },
+    "bindgen": {
+      "type": "string",
+      "description": "Optional bindgen path; empty means unused."
+    },
+    "rust_build": { "type": "boolean" },
+    "disk_cleanup": { "type": "boolean" },
+    "hmbird": {
+      "type": "boolean",
+      "description": "HMBIRD SCX scheduler. Silently skipped when no fengchi_<model>_<os>.patch exists upstream."
+    },
+    "susfs": { "type": "boolean" },
+    "opt": { "type": "boolean" },
+    "ds": {
+      "type": "boolean",
+      "description": "Droidspaces / SYSVIPC support."
+    },
+    "bbg": {
+      "type": "boolean",
+      "description": "Baseband Guard. Keep false on devices that need EFISP/bootloader-spoof chains."
+    },
+    "bbr": { "type": "boolean" },
+    "bbr3": { "type": "boolean" },
+    "ttl": { "type": "boolean" },
+    "ip_set": {
+      "type": "boolean",
+      "description": "IP set support plus the IPv6 NAT /proc/config.gz hiding patch."
+    },
+    "unicode": { "type": "boolean" },
+    "ntsync": { "type": "boolean" },
+    "blacklist_modules": {
+      "type": "string",
+      "description": "Comma-separated module names to drop from the build."
+    },
+    "uname": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 44,
+      "description": "Appended to the kernel release string as LOCALVERSION, so uname -r becomes '<kernel version>-<android_version>-<uname>'. Two distinct uses, chosen deliberately: a short brand string (e.g. SakFi-OP) marks the build visibly; a full stock-style suffix (e.g. 6-g242e1a07f878-ab15865446-4k) makes uname -r indistinguishable from a stock OnePlus kernel. A brand string defeats the spoof, a spoof string hides the brand. LOCALVERSION_AUTO is disabled, so no git hash is appended after it."
+    },
+    "bore": {
+      "type": "boolean",
+      "description": "BORE scheduler. Only patches exist for 6.12; other kernel versions skip the step."
+    },
+    "adios": {
+      "type": "boolean",
+      "description": "ADIOS I/O scheduler. Only patches exist for 6.12."
+    },
+    "mlgo": {
+      "type": "boolean",
+      "description": "ML-guided register allocation. Requires a +mlgo clang (r547379 is)."
+    },
+    "susfs_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Pin SUSFS to one commit for this device only. Unpinned devices on the same KMI keep using the workflow input or the default branch."
+    },
+    "ksu_hash": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Override the SukiSU-Ultra ref for this device. Resolved and validated at matrix time."
+    }
+  }
+}

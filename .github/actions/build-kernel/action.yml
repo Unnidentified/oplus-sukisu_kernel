@@ -5,43 +5,36 @@ inputs:
   op_config_json:
     description: 'JSON string containing full device config'
     required: true
-    type: string
   ksu_type:
     description: 'Select root type: SukiSU-Ultra (default) or legacy KernelSU'
     required: true
-    type: choice
-    options:
-      - KSUN
-      - KSU
   ksu_branch_or_hash:
     description: 'Root branch or commit hash (empty = auto-detect by ksu_type)'
     required: false
-    type: string
     default: ""
   susfs_commit_hash_or_branch:
     description: 'SUSFS branch or commit hash (empty = auto-detect by kernel version)'
     required: false
-    type: string
     default: ""
   build_timestamp:
     description: 'Custom kernel build timestamp shown in uname -a (e.g. "Tue Feb 10 10:01:02 UTC 2026"). Leave empty to use the current build time.'
     required: false
-    type: string
     default: ''
   optimize_level:
     description: 'Compiler optimization level (O2 or O3)'
     required: false
-    type: string
     default: O2
   clean:
     description: 'Force clean build without ccache acceleration'
     required: false
-    type: boolean
     default: false
   debug:
     description: 'Enable dumping debug related artifacts'
     required: false
-    type: boolean
+    default: false
+  kmi_check_strict:
+    description: 'Fail the build when the KMI/ABI check finds missing or changed symbols (default: report only)'
+    required: false
     default: false
   github_token:
     description: 'GitHub Token'
@@ -49,7 +42,6 @@ inputs:
   ksu_mode:
     description: 'SukiSU-Ultra integration mode: lkm or builtin'
     required: false
-    type: string
     default: 'builtin'
 
 outputs:
@@ -92,6 +84,9 @@ outputs:
   zip_name:
     description: 'Name of the generated flashable ZIP'
     value: ${{ steps.create_zip.outputs.zip_name }}
+  build_info_path:
+    description: 'Path to the generated build-info.json provenance record'
+    value: ${{ steps.build_info.outputs.build_info_path }}
 
 runs:
   using: 'composite'
@@ -947,7 +942,20 @@ runs:
               exit 1
             fi
           fi
-          echo "SUSFS_COMMIT_SHA=$SUSFS_BRANCH" >> $GITHUB_ENV
+          # SUSFS_BRANCH is a ref (branch name or 40-char hash), not a commit.
+          # The archive path extracts a tarball with no .git, so fall back to the
+          # ref when it is already a full commit hash.
+          SUSFS_COMMIT_SHA=$(git -C susfs4ksu rev-parse HEAD 2>/dev/null || true)
+          if [ -z "$SUSFS_COMMIT_SHA" ] && [[ "$SUSFS_BRANCH" =~ ^[0-9a-f]{40}$ ]]; then
+            SUSFS_COMMIT_SHA="$SUSFS_BRANCH"
+          fi
+          if [ -z "$SUSFS_COMMIT_SHA" ]; then
+            echo "::warning::Could not resolve a commit for SUSFS ref '$SUSFS_BRANCH'; provenance will record the ref only"
+          fi
+          echo "SUSFS_REF=$SUSFS_BRANCH" >> $GITHUB_ENV
+          echo "SUSFS_COMMIT_SHA=$SUSFS_COMMIT_SHA" >> $GITHUB_ENV
+          echo " SUSFS ref: $SUSFS_BRANCH"
+          echo " SUSFS commit: ${SUSFS_COMMIT_SHA:-unknown}"
         fi
         echo " Dependencies cloned"
         echo "::endgroup::"
@@ -1562,41 +1570,42 @@ runs:
             fi
           fi
         fi
-        find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" -delete 2>/dev/null || true
-        # Verify no patch rejects (.rej) exist
-        rej_count=0
-        for dir in "$COMMON_KERNEL_FOLDER" "${KSUN_FOLDER:-}" "${KSU_FOLDER:-}"; do
-          if [ -n "$dir" ] && [ -d "$dir" ]; then
-            if find "$dir" -name "*.rej" -print | grep -q .; then
-              echo "::error::SUSFS patches did not apply cleanly in $dir! Found .rej files:"
-              find "$dir" -name "*.rej" -exec echo "REJECT: {}" \;
-              
-              echo "::group::Detailed reject file contents from $dir"
-              find "$dir" -name "*.rej" | while read -r rej_file; do
-                echo "------------------------------------------------------------"
-                echo "Reject file: $rej_file"
-                echo "------------------------------------------------------------"
-                sed -n '1,120p' "$rej_file" 2>/dev/null || cat "$rej_file" 2>/dev/null || true
-              done
-              echo "::endgroup::"
+        # Verify no patch rejects (.rej) survived. This MUST run before the
+        # cleanup below: deleting the .rej files first made this check dead
+        # code, so the build silently accepted rejects and carried on with
+        # SUSFS hooks missing from the kernel.
+        #
+        # $KERNEL_PLATFORM_FOLDER is the superset — KernelSU and KernelSU-Next
+        # both live inside it — so one scan covers every tree we patch.
+        rej_files=$(find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" 2>/dev/null | sort || true)
+        if [ -n "$rej_files" ]; then
+          echo "::error::SUSFS / SukiSU-Ultra patches did not apply cleanly. Found .rej files:"
+          printf '%s\n' "$rej_files" | sed 's/^/REJECT: /'
 
-              # Copy rejects to a folder for artifact upload
-              mkdir -p "$GITHUB_WORKSPACE/patch_rejects"
-              find "$dir" -name "*.rej" | while read -r rej_file; do
-                rel_path="${rej_file#$GITHUB_WORKSPACE/}"
-                dest_dir="$GITHUB_WORKSPACE/patch_rejects/$(dirname "$rel_path")"
-                mkdir -p "$dest_dir"
-                cp "$rej_file" "$dest_dir/"
-              done
-              
-              rej_count=$((rej_count + 1))
-            fi
-          fi
-        done
-        if [ "$rej_count" -gt 0 ]; then
+          echo "::group::Detailed reject file contents"
+          printf '%s\n' "$rej_files" | while read -r rej_file; do
+            echo "------------------------------------------------------------"
+            echo "Reject file: $rej_file"
+            echo "------------------------------------------------------------"
+            sed -n '1,120p' "$rej_file" 2>/dev/null || true
+          done
+          echo "::endgroup::"
+
+          # Copy rejects out for the artifact upload step.
+          mkdir -p "$GITHUB_WORKSPACE/patch_rejects"
+          printf '%s\n' "$rej_files" | while read -r rej_file; do
+            rel_path="${rej_file#$GITHUB_WORKSPACE/}"
+            dest_dir="$GITHUB_WORKSPACE/patch_rejects/$(dirname "$rel_path")"
+            mkdir -p "$dest_dir"
+            cp "$rej_file" "$dest_dir/"
+          done
+
           echo "::error::One or more SUSFS / SukiSU-Ultra patches created .rej files. Aborting build."
           exit 1
         fi
+
+        # Only now is it safe to clear any stragglers.
+        find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" -delete 2>/dev/null || true
         
         echo " SUSFS patches applied"
         
@@ -2283,6 +2292,15 @@ runs:
         if [ "$UNAME_BRAND" = "OP-WILD" ]; then
           UNAME_BRAND="SakFi-OP"
         fi
+        # OP_UNAME is appended verbatim as LOCALVERSION, giving
+        #   uname -r = <kernel version>-<android_version>-<OP_UNAME>
+        # It carries two different meanings depending on the profile:
+        #   SakFi-OP                      -> a visible brand marker
+        #   6-g242e1a07f878-ab15865446-4k -> a stock-style suffix that makes
+        #                                    uname -r indistinguishable from a
+        #                                    stock OnePlus kernel
+        # Both are legitimate; they are not interchangeable. See the `uname`
+        # description in configs/schema.json.
         CUSTOM_LOCALVERSION="-${ANDROID_VER}-${UNAME_BRAND}"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
 
@@ -2902,6 +2920,90 @@ runs:
         echo " SHA256: $ZIP_SHA256"
         echo "::endgroup::"
 
+    - name: KMI / ABI check
+      id: kmi_check
+      shell: bash
+      if: ${{ always() && steps.build_kernel_step.outcome == 'success' }}
+      run: |
+        set -euo pipefail
+        echo "::group::KMI / ABI check"
+        STG="$COMMON_KERNEL_FOLDER/gki/aarch64/abi.stg"
+        SYMVERS="$COMMON_KERNEL_FOLDER/out/Module.symvers"
+        REPORT="$GITHUB_WORKSPACE/kmi-report.txt"
+        CHECKER="${{ github.action_path }}/../../../scripts/kmi-check.py"
+
+        if [ ! -f "$STG" ]; then
+          echo " No gki/aarch64/abi.stg in this tree; skipping KMI check"
+          echo "::endgroup::"
+          exit 0
+        fi
+        if [ ! -f "$SYMVERS" ]; then
+          echo "::warning::No Module.symvers at $SYMVERS; skipping KMI check"
+          echo "::endgroup::"
+          exit 0
+        fi
+        if [ ! -f "$CHECKER" ]; then
+          echo "::warning::KMI checker not found at $CHECKER; skipping"
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        # Report-only unless kmi_check_strict is set: the CRC comparison has not
+        # been validated against a known-good build yet, so it must not gate.
+        strict=""
+        if [ "${{ inputs.kmi_check_strict }}" = "true" ]; then
+          strict="--strict"
+        fi
+
+        python3 "$CHECKER" --stg "$STG" --symvers "$SYMVERS" --report "$REPORT" $strict
+        echo " Report: $REPORT"
+        echo "::endgroup::"
+
+    - name: Write build info
+      id: build_info
+      shell: bash
+      if: ${{ always() && steps.create_zip.conclusion == 'success' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Write build info"
+        WRITER="${{ github.action_path }}/../../../scripts/build-info.py"
+        OUT="$GITHUB_WORKSPACE/${OP_MODEL}_${OP_OS_VERSION}_build-info.json"
+
+        if [ ! -f "$WRITER" ]; then
+          echo "::error::build-info writer not found at $WRITER"
+          exit 1
+        fi
+
+        python3 "$WRITER" \
+          --out "$OUT" \
+          --manifest "$CONFIG_FOLDER/manifest.xml" \
+          --model "$OP_MODEL" \
+          --os-version "$OP_OS_VERSION" \
+          --android-version "$OP_ANDROID_VERSION" \
+          --kernel-version "$OP_KERNEL_VERSION" \
+          --soc "${OP_SOC:-}" \
+          --uname "${OP_UNAME:-}" \
+          --kernel-branch "${OP_BRANCH:-}" \
+          --kernel-full-version "${KERNEL_FULL_VER:-}" \
+          --image-sha256 "${{ steps.collect_stats.outputs.image_sha256 }}" \
+          --susfs-version "${SUSVER:-}" \
+          --susfs-ref "${SUSFS_REF:-}" \
+          --susfs-commit "${SUSFS_COMMIT_SHA:-}" \
+          --ksu-type "${{ inputs.ksu_type }}" \
+          --ksu-version "${KSUVER:-}" \
+          --ksu-ref "${{ inputs.ksu_branch_or_hash }}" \
+          --ksu-commit "${KSU_COMMIT_SHA:-}" \
+          --clang "${CLANG_VERSION:-}" \
+          --zip "$ARTIFACTS_FOLDER/$ZIP_NAME" \
+          --run-id "$GITHUB_RUN_ID" \
+          --run-attempt "$GITHUB_RUN_ATTEMPT" \
+          --repository "$GITHUB_REPOSITORY" \
+          --commit "$GITHUB_SHA" \
+          --workflow "$GITHUB_WORKFLOW"
+
+        echo "build_info_path=$OUT" >> "$GITHUB_OUTPUT"
+        echo "::endgroup::"
+
     - name: Final Build Summary
       shell: bash
       run: |
@@ -3061,6 +3163,24 @@ runs:
         path: ${{ env.ARTIFACTS_FOLDER }}/${{ env.ZIP_NAME }}
         archive: false
         compression-level: 0
+        retention-days: 90
+
+    - name: Upload KMI report
+      if: ${{ always() && !cancelled() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_kmi_report
+        path: ${{ github.workspace }}/kmi-report.txt
+        if-no-files-found: ignore
+        retention-days: 30
+
+    - name: Upload build info
+      if: ${{ always() && steps.build_info.conclusion == 'success' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_build_info
+        path: ${{ steps.build_info.outputs.build_info_path }}
+        archive: false
         retention-days: 90
 
     - name: Upload ccache log

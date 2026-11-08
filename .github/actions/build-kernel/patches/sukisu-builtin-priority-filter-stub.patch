@@ -1,3 +1,16 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] KernelSU: guard priority_uid_filter calls behind CMD_SUSFS_SET_PRIORITY_UID_FILTER
+
+susfs_parse_priority_app_strings() and the CMD_SUSFS_SET_PRIORITY_UID_FILTER
+supercall only exist in susfs4ksu commits rebased onto android16-6.12.92.
+Those commits' 50_add_susfs patch rejects on our 6.12.69 base, so we build
+against an older SUSFS that lacks the command while SukiSU-Ultra's builtin
+tree still references it.
+
+Guard the call sites so the tree compiles either way.
+
+Local compatibility shim, not an upstream patch.
+
 --- a/kernel/supercall/dispatch.c
 +++ b/kernel/supercall/dispatch.c
 @@ -475,8 +475,10 @@

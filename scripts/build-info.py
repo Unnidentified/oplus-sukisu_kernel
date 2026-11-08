@@ -111,6 +111,7 @@ def build_parser():
     features.add_argument("--bore", default="")
     features.add_argument("--adios", default="")
     features.add_argument("--mlgo", default="")
+    features.add_argument("--patchset-commit", default="", help="commit of the external kernel_patches repo")
 
     artifact = parser.add_argument_group("artifact")
     artifact.add_argument("--zip", default="", help="path to the AnyKernel3 zip")
@@ -190,6 +191,7 @@ def main(argv=None):
             "bore": args.bore == "true",
             "adios": args.adios == "true",
             "mlgo": args.mlgo == "true",
+            "patchset_commit": args.patchset_commit,
         },
         "artifact": artifact,
         "build": {

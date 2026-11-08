@@ -1655,6 +1655,40 @@ runs:
         echo " KSU hooks applied"
         echo "::endgroup::"
 
+    - name: Apply BORE scheduler
+      if: ${{ env.OP_BORE == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Apply BORE scheduler"
+        cd "$COMMON_KERNEL_FOLDER"
+        case "${{ env.KERNEL_VER }}" in
+          6.12) ;;
+          *) echo "   no BORE patch for ${{ env.KERNEL_VER }}; skipping"; echo "::endgroup::"; exit 0 ;;
+        esac
+        PATCH="${GITHUB_ACTION_PATH}/patches/bore_6.12.patch"
+        [ -f "$PATCH" ] || { echo "::error::no BORE patch at $PATCH"; exit 1; }
+        if grep -q "CONFIG_SCHED_BORE" kernel/sched/sched.h 2>/dev/null; then
+          echo "   BORE already present in this tree, skipping"
+          echo "::endgroup::"; exit 0
+        fi
+        # OnePlus vendor trees ship a 750000ULL base_slice that rejects mid-hunk;
+        # GKI canon is 700000ULL and BORE overrides base_slice anyway (dead code).
+        sed -i 's/750000ULL/700000ULL/g; s/0\\.75 msec/0.70 msec/g' kernel/sched/fair.c
+        patch -p1 --ignore-whitespace -F3 < "$PATCH"
+        left="$(find . -name '*.rej' | sort)"
+        if [ -n "$left" ]; then
+          echo "::error::BORE left rejects:"
+          echo "$left" | sed 's/^/     /'
+          exit 1
+        fi
+        find . -name '*.orig' -delete
+        for config in $(find arch/arm64/configs -type f -name "*defconfig"); do
+          echo "CONFIG_SCHED_BORE=y" >> "$config"
+        done
+        echo "   BORE applied, CONFIG_SCHED_BORE=y (sched_bore=1 from boot; runtime toggle: /proc/sys/kernel/sched_bore)"
+        echo "::endgroup::"
+
     - name: Apply Other Patches
       shell: bash
       run: |

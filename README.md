@@ -30,7 +30,7 @@ No local toolchain needed: pick your device in GitHub Actions, and the kernel is
 
 4. When the run finishes, grab the `SKF_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts.
 
-Zip names follow `SKF_{MODEL}_{OS}_{KERNEL}_{KSU_TYPE}_{VERSION}_SuSFS[_LKM].zip`, e.g. `SKF_OP15_A16_6.12.x_KSUN_41140_SuSFS_v2.3.0.zip` for builtin builds.
+Zip names follow `SKF_{MODEL}_{OS}_{KERNEL}_{ROOT_TAG}_{VERSION}_SuSFS[_LKM].zip`, e.g. `SKF_OP15_A16_6.12.x_SUKISU_41140_SuSFS_v2.3.0.zip` for builtin SukiSU-Ultra builds (`SUKISU` tag).
 
 ---
 

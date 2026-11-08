@@ -16,7 +16,7 @@ sleep 0.15
 sleep 0.8
 
 ui_print " "
-ui_print "| MODULE [KSUN] : : : : ACTIVE [✓]"
+ui_print "| MODULE [SukiSU-Ultra] : : : : ACTIVE [✓]"
 sleep 0.4
 ui_print "| MODULE [SUSFS] : : :  ACTIVE [✓]"
 sleep 0.5
@@ -57,7 +57,7 @@ ui_print " "
 ui_print "[i] Installing Kernel..."
 sleep 0.8
 ui_print " "
-ui_print "=> Patching with KSUN: true"
+ui_print "=> Patching with SukiSU-Ultra: true"
 sleep 0.5
 ui_print "=> Patching with SUSFS: true"
 sleep 0.5

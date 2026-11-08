@@ -864,7 +864,7 @@ jobs:
           if-no-files-found: warn
 
   build-A16:
-    name: build-A16 (${{ matrix.model }}, ${{ matrix.ksu_type }})
+    name: build-A16 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
     needs: [set-op-model, prepare_ccache, mirror_toolchain]
     if: |
       !cancelled() &&
@@ -918,7 +918,7 @@ jobs:
           ksu_mode: ${{ inputs.ksu_mode }}
 
   build-A15:
-    name: build-A15 (${{ matrix.model }}, ${{ matrix.ksu_type }})
+    name: build-A15 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
     needs: [set-op-model, prepare_ccache, mirror_toolchain]
     if: |
       !cancelled() &&
@@ -972,7 +972,7 @@ jobs:
           ksu_mode: ${{ inputs.ksu_mode }}
 
   build-A14:
-    name: build-A14 (${{ matrix.model }}, ${{ matrix.ksu_type }})
+    name: build-A14 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
     needs: [set-op-model, prepare_ccache, mirror_toolchain]
     if: |
       !cancelled() &&

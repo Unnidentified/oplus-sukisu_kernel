@@ -148,7 +148,7 @@ jobs:
           MESSAGE=$(cat <<EOF
           <b>$EMOJI $STATUS</b>
 
-          <pre><code class="language-markdown">Kernel Name: OnePlus Kernels with KSUN & SUSFS
+          <pre><code class="language-markdown">Kernel Name: OnePlus Kernels with SukiSU-Ultra & SUSFS
           Version / Tag: $REL_TAG
           Title: $REL_NAME
           Device: Any supported OnePlus device (Check GitHub for your device)

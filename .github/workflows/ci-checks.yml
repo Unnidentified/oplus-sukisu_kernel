@@ -43,6 +43,18 @@ jobs:
           sys.exit(1 if failed else 0)
           PY
 
+      - name: Install pinned shellcheck
+        run: |
+          # actionlint shells out to whatever shellcheck is on PATH, so leaving
+          # this to the runner image makes the gate non-deterministic: the
+          # preinstalled version reports codes (SC2236, SC2002) that 0.11.0 does
+          # not, and the image changes without notice. Pin it.
+          version=0.11.0
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz" \
+            | tar -xJ -C /tmp
+          sudo install -m 0755 "/tmp/shellcheck-v${version}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version | head -2
+
       - name: actionlint
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
@@ -52,7 +64,11 @@ jobs:
           # unquoted variables — suppressed so this gate reports new problems
           # instead of re-reporting the old ones. Burn the backlog down
           # separately, then drop the matching -ignore line.
-          ./actionlint -color \
+          #
+          # SC2236 and SC2002 are listed defensively: the pinned shellcheck does
+          # not emit them, but older versions do, and an ignore that matches
+          # nothing is harmless.
+          ./actionlint -color -shellcheck=/usr/local/bin/shellcheck \
             -ignore 'SC2086:.*' \
             -ignore 'SC2034:.*' \
             -ignore 'SC2129:.*' \
@@ -61,7 +77,9 @@ jobs:
             -ignore 'SC2059:.*' \
             -ignore 'SC2193:.*' \
             -ignore 'SC2181:.*' \
-            -ignore 'SC2163:.*'
+            -ignore 'SC2163:.*' \
+            -ignore 'SC2236:.*' \
+            -ignore 'SC2002:.*'
 
       - name: shellcheck scripts
         run: shellcheck -s bash scripts/*.sh
@@ -74,6 +92,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: select
     if: needs.select.outputs.matrix != '{"include":[]}'
+    # Blocking only for refs we control (pinned susfs_hash, or a KMI key whose
+    # workflow default is a pinned SHA). Canaries that track a moving upstream
+    # branch tip report their result without failing the PR.
+    continue-on-error: ${{ !matrix.blocking }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
@@ -95,7 +117,14 @@ jobs:
         id: pick
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import glob, json, os
+          import glob, json
+
+          # Mirrors the androidXX_susfs_branch_or_commit input defaults in
+          # build-kernel-release.yml. A key with a pinned default is something
+          # we control, so its canary blocks. A key whose default is a moving
+          # branch tip is upstream drift — worth reporting, not worth blocking
+          # an unrelated PR over.
+          PINNED_DEFAULT_KEYS = {"android16-6.12"}
 
           entries = []
           for path in sorted(glob.glob("configs/*/*.json")):
@@ -104,7 +133,7 @@ jobs:
               cfg = json.load(open(path))
               # Profiles whose build applies a patch we maintain in this repo.
               if cfg.get("bore") or cfg.get("adios") or cfg.get("susfs_hash"):
-                  entries.append({"label": cfg["model"], "config": path})
+                  entries.append({"label": cfg["model"], "config": path, "blocking": True})
 
           # One canary per kernel source that relies on the default SUSFS ref,
           # so a moved default branch is caught before it reaches a build.
@@ -115,11 +144,15 @@ jobs:
               cfg = json.load(open(path))
               if not cfg.get("susfs") or cfg.get("susfs_hash"):
                   continue
-              key = (cfg["android_version"], cfg["kernel_version"])
+              key = f"{cfg['android_version']}-{cfg['kernel_version']}"
               if key in seen:
                   continue
               seen.add(key)
-              entries.append({"label": f"{cfg['model']}-default", "config": path})
+              entries.append({
+                  "label": f"{cfg['model']}-default",
+                  "config": path,
+                  "blocking": key in PINNED_DEFAULT_KEYS,
+              })
 
           print("matrix=" + json.dumps({"include": entries}))
           PY

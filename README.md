@@ -46,7 +46,7 @@ Zip names follow `SKF_{MODEL}_{OS}_{KERNEL}_{KSU_TYPE}_{VERSION}_SuSFS[_LKM].zip
 | Containers | **Droidspaces** | SYSVIPC support for portable Linux containers |
 | Misc | HMBIRD SCX, LTO, TMPFS xattr, Unicode bypass fix | Toggled per device in `configs/` |
 
-The OnePlus 15 profile (`configs/a16/OP15.json`) is `android16` / `6.12` (`canoe`) with SUSFS and HMBIRD on, and BBG off — this fork keeps Baseband Guard disabled on the OP15 so the EFS/bootloader mod keeps working.
+The OnePlus 15 profile (`configs/a16/OP15.json`) is `android16` / `6.12` (`canoe`) with SUSFS on and BBG off — this fork keeps Baseband Guard disabled on the OP15 so the EFS/bootloader mod keeps working. HMBIRD is off because no `fengchi_OP15_A16` patch exists upstream, so the build skipped it anyway.
 
 ---
 

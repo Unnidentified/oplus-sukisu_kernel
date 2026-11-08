@@ -92,10 +92,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: select
     if: needs.select.outputs.matrix != '{"include":[]}'
-    # Blocking only for refs we control (pinned susfs_hash, or a KMI key whose
-    # workflow default is a pinned SHA). Canaries that track a moving upstream
-    # branch tip report their result without failing the PR.
-    continue-on-error: ${{ !matrix.blocking }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
@@ -103,7 +99,23 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Apply patch sequence to the pinned base
-        run: ./scripts/check-patches.sh "${{ matrix.config }}"
+        run: |
+          set +e
+          ./scripts/check-patches.sh "${{ matrix.config }}"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            exit 0
+          fi
+          # Blocking entries are refs we control (a pinned susfs_hash, or a KMI
+          # key whose workflow default is a pinned SHA) — a failure there is a
+          # regression in this repo. The rest track a moving upstream branch
+          # tip, so a failure is drift we cannot fix here: surface it as a
+          # warning annotation instead of failing the PR.
+          if [ "${{ matrix.blocking }}" = "true" ]; then
+            exit "$rc"
+          fi
+          echo "::warning title=Upstream SUSFS drift::${{ matrix.label }} no longer applies against the current default SUSFS ref. This profile tracks a moving branch tip, so it is upstream drift rather than a regression in this repo."
 
   select:
     name: Select patch-check targets

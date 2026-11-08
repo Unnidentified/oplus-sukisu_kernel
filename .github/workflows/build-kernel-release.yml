@@ -121,6 +121,16 @@ on:
         type: choice
         options: [O2, O3]
         default: O2
+      lto_override:
+        description: "Force an LTO mode for this run only. Leave on 'config' to use each device's own setting. Exists so LTO can be tested on a profile without editing its config and committing the change."
+        required: false
+        type: choice
+        options:
+          - config
+          - none
+          - thin
+          - full
+        default: config
       clean_build:
         description: 'Clean build (no ccache)'
         type: boolean
@@ -827,6 +837,7 @@ jobs:
           debug: ${{ inputs.debug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
+          lto_override: ${{ inputs.lto_override == 'config' && '' || inputs.lto_override }}
 
   build-A15:
     name: build-A15 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
@@ -881,6 +892,7 @@ jobs:
           debug: ${{ inputs.debug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
+          lto_override: ${{ inputs.lto_override == 'config' && '' || inputs.lto_override }}
 
   build-A14:
     name: build-A14 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
@@ -935,6 +947,7 @@ jobs:
           debug: ${{ inputs.debug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
+          lto_override: ${{ inputs.lto_override == 'config' && '' || inputs.lto_override }}
 
   trigger-release:
     needs: [set-op-model, build-A16, build-A15, build-A14]

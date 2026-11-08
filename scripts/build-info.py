@@ -103,6 +103,15 @@ def build_parser():
     toolchain = parser.add_argument_group("toolchain")
     toolchain.add_argument("--clang", default="")
 
+    features = parser.add_argument_group("features")
+    features.add_argument("--lto", default="", help="effective LTO mode, after any override")
+    features.add_argument("--autofdo", default="", help="'true' when AutoFDO was used")
+    features.add_argument("--autofdo-profile-sha256", default="")
+    features.add_argument("--damon", default="")
+    features.add_argument("--bore", default="")
+    features.add_argument("--adios", default="")
+    features.add_argument("--mlgo", default="")
+
     artifact = parser.add_argument_group("artifact")
     artifact.add_argument("--zip", default="", help="path to the AnyKernel3 zip")
 
@@ -173,6 +182,15 @@ def main(argv=None):
             "commit": args.ksu_commit,
         },
         "toolchain": {"clang": args.clang},
+        "features": {
+            "lto": args.lto,
+            "autofdo": args.autofdo == "true",
+            "autofdo_profile_sha256": args.autofdo_profile_sha256,
+            "damon": args.damon == "true",
+            "bore": args.bore == "true",
+            "adios": args.adios == "true",
+            "mlgo": args.mlgo == "true",
+        },
         "artifact": artifact,
         "build": {
             "run_id": args.run_id,

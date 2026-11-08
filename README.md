@@ -49,8 +49,30 @@ Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}.zip` (LKM builds add 
 | Network | **BBR**, **WireGuard**, TTL / IP Set | Congestion control, in-kernel VPN, packet tools |
 | Containers | **Droidspaces** | SYSVIPC support for portable Linux containers |
 | Misc | HMBIRD SCX, LTO, TMPFS xattr, Unicode bypass fix | Toggled per device in `configs/` |
+| Compiler | **AutoFDO** | Profile-guided optimisation using Google's `kernel.afdo` for `android16-6.12`. Off by default; on for `OP15-COS17` |
+| Memory | **DAMON** | Data access monitor, as shipped by Android 17's GKI. Built in but dormant until a policy starts it |
 
 The OnePlus 15 profile (`configs/a16/OP15.json`) is `android16` / `6.12` (`canoe`) with SUSFS on and BBG off — this fork keeps Baseband Guard disabled on the OP15 so the EFS/bootloader mod keeps working. HMBIRD is off because no `fengchi_OP15_A16` patch exists upstream, so the build skipped it anyway.
+
+### AutoFDO
+
+`"autofdo": true` builds with Google's kernel AutoFDO profile for `android16-6.12`. Google's published numbers for this profile are 2-3% boot, 3-4% cold app launch, 8-9% binder-rpc, 12-25% binder-addints, 12-18% hwbinder and 6% on `syscall_mmap`.
+
+`gki_defconfig` already sets `CONFIG_AUTOFDO_CLANG=y`, but on its own that buys nothing: without `CLANG_AUTOFDO_PROFILE`, `scripts/Makefile.autofdo` only adds `-fdebug-info-for-profiling` and `-gmlt` — debug info nobody consumes, and no profile-guided optimisation. Every build before this one was paying that cost for zero benefit. The profile is the missing half.
+
+It is not in the pinned kernel tree: `gki/aarch64/afdo/kernel.afdo` exists on the `android16-6.12` branch but not at the `242e1a07` commit the manifest pins. The build downloads it from a pinned commit and verifies its sha256; a failed download or a hash mismatch aborts the build rather than quietly producing a kernel without AutoFDO. It also re-checks that `CONFIG_AUTOFDO_CLANG=y` survived `olddefconfig`, so a base-tree change fails loudly instead of silently dropping the profile.
+
+The profile was generated on a Pixel 10 with Google's app set, so it is not tuned to ColorOS workloads. Kernel hot paths overlap heavily, but treat the numbers above as an upper bound. Set `"autofdo": false` to revert.
+
+### DAMON
+
+`"damon": true` builds `CONFIG_DAMON` plus `DAMON_RECLAIM` and `DAMON_LRU_SORT`, matching what Android 17's GKI ships. Nothing starts at boot: `kdamond` only runs when a userspace policy enables it, so the cost when unused is code size only.
+
+### LTO
+
+Eight of the nine `android16-6.12` profiles build with `"lto": "none"`; every older profile uses `thin`. The reason for the 6.12 exception is not recorded — the change landed as a web-UI edit on 2026-08-07 with the default commit message, in the same hour as two other trial-and-error edits. `OP-PAD-LITE` is the one 6.12 profile still on `thin`, so LTO is not fundamentally broken there.
+
+To test it without editing a config, dispatch the workflow with `lto_override` set to `thin` or `full`. The override applies to that run only, warns in the log, and is recorded as `features.lto` in `build-info.json` so two builds of the same version stay distinguishable.
 
 ---
 
@@ -96,7 +118,7 @@ Each release lists a `sha256` next to every zip. Check it before flashing:
 sha256sum OP15-COS17_android16-6.12.69-SuSFS_v2.3.0.zip
 ```
 
-Every zip also ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, and the image/zip checksums — so you can tell two builds of the same version apart.
+Every zip also ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, the image/zip checksums, and which optimisation features were enabled (`features.lto`, `features.autofdo` with the profile hash, `features.damon`, `features.bore`, `features.adios`, `features.mlgo`) — so you can tell two builds of the same version apart.
 
 ---
 

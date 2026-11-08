@@ -131,6 +131,14 @@
       "type": "boolean",
       "description": "ADIOS I/O scheduler. Only patches exist for 6.12."
     },
+    "autofdo": {
+      "type": "boolean",
+      "description": "Clang AutoFDO using Google's kernel.afdo profile for android16-6.12. gki_defconfig already sets CONFIG_AUTOFDO_CLANG=y, but without a profile that only adds unused debug info; this supplies CLANG_AUTOFDO_PROFILE. The profile is pinned by commit and verified by sha256, and a failed download or hash mismatch aborts the build rather than silently producing a kernel without it. 6.12 only."
+    },
+    "damon": {
+      "type": "boolean",
+      "description": "DAMON data access monitor, as shipped by Android 17's GKI. Builds DAMON_RECLAIM and DAMON_LRU_SORT but starts nothing: kdamond only runs when a userspace policy enables it, so the cost when unused is code size only."
+    },
     "mlgo": {
       "type": "boolean",
       "description": "ML-guided register allocation. Requires a +mlgo clang (r547379 is)."

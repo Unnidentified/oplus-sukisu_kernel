@@ -157,6 +157,16 @@
       "type": "string",
       "minLength": 1,
       "description": "Override the SukiSU-Ultra ref for this device. Resolved and validated at matrix time."
+    },
+    "blocked": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Why this profile cannot be built today. A profile carrying this field is excluded from the build matrix, so selecting its model family builds the siblings that do work instead of failing the whole run. Selecting it on its own fails immediately with this text instead of failing 20 minutes later at a patch step. Remove the field when the blocker is gone. scripts/validate-configs.py checks that the README's known-unbuildable table and this field agree."
+    },
+    "tested": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What was verified on real hardware, and on which build. Absent means the profile has never been flashed: a green build proves it compiles, not that it boots. Example: 'v2.2.0-r1 on OxygenOS 16.0.0.201: boot, suspend/resume, camera, modem, Wi-Fi'. Surfaced in the release notes so an untested zip is visibly untested."
     }
   }
 }

@@ -60,6 +60,7 @@ The `-r{REV}` is the release revision. It is resolved once in `set-op-model`, be
 | Containers | **Droidspaces** | SYSVIPC support for portable Linux containers |
 | Misc | HMBIRD SCX, TMPFS xattr, Unicode bypass fix | Toggled per device in `configs/` |
 | Hardening | **LIST_HARDENED**, **RANDOM_KMALLOC_CACHES** | Baseline, on for every 6.6+ profile. See [Baseline hardening](#baseline-hardening) |
+| Debug | **KASAN off**, **KFENCE on** | `gki_defconfig` ships KASAN on; the build turns it off. See [KASAN](#kasan) |
 
 ---
 
@@ -159,6 +160,16 @@ Two more are deliberately **not** enabled:
 
 - **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** zeroes every freed object. `INIT_ON_ALLOC_DEFAULT_ON` is already on and covers the main info-leak path; this doubles the zeroing for a smaller marginal gain.
 - **`CONFIG_ARM64_MTE`** needs hardware support and a userspace that tolerates tag checks. Enabling it blind crashes things.
+
+### KASAN
+
+`gki_defconfig` ships `CONFIG_KASAN=y` and `CONFIG_KASAN_HW_TAGS=y`. arm64 selects `HAVE_ARCH_KASAN_HW_TAGS` whenever `ARM64_MTE` is on, and `ARM64_MTE` is `default y`, so a plain `make gki_defconfig` keeps both. The runtime default is `KASAN_MODE_SYNC`, the most expensive mode, and only `kasan=off` on the command line turns it off.
+
+That is a debug configuration. Google keeps it out of production GKI through Kleaf's `--kasan` flag, which this build does not use. So `kasan` defaults to **false** and the build appends `# CONFIG_KASAN is not set` to the defconfig. Set `"kasan": true` in a device profile to build a KASAN kernel for debugging.
+
+`CONFIG_KFENCE` stays on either way. It depends only on `HAVE_ARCH_KFENCE`, and its own Kconfig says: "If your kernel targets production use, and cannot enable KASAN due to its cost, consider using KFENCE."
+
+Two checks guard it. After `olddefconfig` the resolved `.config` must not contain `CONFIG_KASAN=y`, `CONFIG_KASAN_HW_TAGS=y`, `CONFIG_KASAN_GENERIC=y` or `CONFIG_KASAN_SW_TAGS=y`. After the build, `build.log` must not contain any `mm/kasan/` object. Either one fails the job rather than shipping a kernel that silently kept the detector.
 
 ### O2 vs O3
 

@@ -139,6 +139,11 @@
       "type": "boolean",
       "description": "DAMON data access monitor, as shipped by Android 17's GKI. Builds DAMON_RECLAIM and DAMON_LRU_SORT but starts nothing: kdamond only runs when a userspace policy enables it, so the cost when unused is code size only."
     },
+    "kasan": {
+      "type": "boolean",
+      "default": false,
+      "description": "Build with KASAN. Off by default: gki_defconfig ships CONFIG_KASAN=y plus CONFIG_KASAN_HW_TAGS=y, and because arm64 selects HAVE_ARCH_KASAN_HW_TAGS whenever ARM64_MTE is on (it is default y), a plain 'make gki_defconfig' keeps both. The runtime default is sync mode, the most expensive one. KASAN is a debug detector, not a hardening feature, and Google keeps it out of production GKI. KFENCE stays on either way: it depends only on HAVE_ARCH_KFENCE, and its own Kconfig recommends it for production kernels that cannot afford KASAN. Set true to build a KASAN kernel for debugging."
+    },
     "mlgo": {
       "type": "boolean",
       "description": "ML-guided register allocation. Requires a +mlgo clang (r547379 is)."

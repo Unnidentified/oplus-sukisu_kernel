@@ -2314,6 +2314,35 @@ runs:
         echo "   LIST_HARDENED + RANDOM_KMALLOC_CACHES enabled"
         echo "::endgroup::"
 
+    - name: Disable KASAN
+      shell: bash
+      if: ${{ env.OP_KASAN != 'true' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Disable KASAN"
+        # gki_defconfig ships CONFIG_KASAN=y and CONFIG_KASAN_HW_TAGS=y. arm64
+        # selects HAVE_ARCH_KASAN_HW_TAGS whenever ARM64_MTE is on, and MTE is
+        # default y, so a plain 'make gki_defconfig' keeps both and the kernel
+        # runs with synchronous tag checks on every memory access. That is a
+        # debug configuration: Google keeps it out of production GKI through
+        # Kleaf's --kasan flag, which this build does not use.
+        #
+        # KFENCE stays. It depends only on HAVE_ARCH_KFENCE, and its own
+        # Kconfig says: "If your kernel targets production use, and cannot
+        # enable KASAN due to its cost, consider using KFENCE."
+        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        # CONFIG_KASAN is not set
+        # CONFIG_KASAN_GENERIC is not set
+        # CONFIG_KASAN_SW_TAGS is not set
+        # CONFIG_KASAN_HW_TAGS is not set
+        # CONFIG_KASAN_INLINE is not set
+        # CONFIG_KASAN_OUTLINE is not set
+        # CONFIG_KASAN_VMALLOC is not set
+        # CONFIG_KASAN_STACK is not set
+        EOF
+        echo "   KASAN disabled, KFENCE kept"
+        echo "::endgroup::"
+
     - name: Add Droidspaces support
       shell: bash
       if: ${{ env.OP_DS == 'true' }}
@@ -2820,6 +2849,23 @@ runs:
             fi
           done
         fi
+        # KASAN is off unless the profile asks for it. Check the resolved
+        # config rather than the defconfig append: olddefconfig could put it
+        # back if something ever selects it.
+        if [ "${OP_KASAN:-false}" != "true" ]; then
+          kasan_on=""
+          for sym in KASAN KASAN_HW_TAGS KASAN_GENERIC KASAN_SW_TAGS; do
+            if grep -q "^CONFIG_${sym}=y" "$OUT/.config"; then
+              echo "::error::CONFIG_${sym}=y in the resolved config, but kasan is off for this profile"
+              kasan_on=1
+            fi
+          done
+          if [ -n "$kasan_on" ]; then
+            audit_failed=1
+          else
+            echo "   OK      KASAN off (CONFIG_KASAN is not set)"
+          fi
+        fi
         if [ "$audit_failed" -ne 0 ]; then
           echo "::error::One or more requested features did not survive olddefconfig. Aborting rather than shipping a kernel that silently lacks them."
           exit 1
@@ -2876,6 +2922,18 @@ runs:
         
         BUILD_END=$(date +%s)
         BUILD_TIME=$((BUILD_END - BUILD_START))
+
+        # Prove it from the compiler output, not just the config. The audit
+        # above runs before the build; this catches anything that re-enables
+        # KASAN later in the pipeline.
+        if [ "${OP_KASAN:-false}" != "true" ]; then
+          if grep -q "mm/kasan/" build.log; then
+            echo "::error::KASAN objects were compiled but kasan is off for this profile:"
+            grep "mm/kasan/" build.log | head -5
+            exit 1
+          fi
+          echo " Verified: no KASAN objects in build.log"
+        fi
         
         echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
         echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"

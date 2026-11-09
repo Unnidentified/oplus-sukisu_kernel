@@ -8,7 +8,7 @@ body:
       value: |
         > [!IMPORTANT]
         > This form is for **non-OnePlus devices** that have been successfully tested with a compatible OnePlus kernel from this repo.
-        > Do **not** submit if you haven't tested yet — use this form only to report a **confirmed working** combination.
+        > Do **not** submit if you haven't tested yet - use this form only to report a **confirmed working** combination.
         > Read the [compatibility guide](../../compatibility.md) before submitting.
 
   - type: checkboxes
@@ -30,7 +30,7 @@ body:
     attributes:
       label: Device Name & Model Number
       description: Full commercial name and model number of your non-OnePlus device.
-      placeholder: "e.g. Realme GT 7 Pro — RMX5111"
+      placeholder: "e.g. Realme GT 7 Pro - RMX5111"
     validations:
       required: true
 
@@ -47,7 +47,7 @@ body:
     attributes:
       label: Android / ROM Version
       description: Android version and OEM firmware version currently running.
-      placeholder: "e.g. Android 15 — Realme UI 6.0"
+      placeholder: "e.g. Android 15 - Realme UI 6.0"
     validations:
       required: true
 
@@ -67,7 +67,7 @@ body:
     attributes:
       label: OnePlus Kernel Flashed
       description: Which OnePlus device kernel did you flash? Include the release tag or artifact link.
-      placeholder: "e.g. OnePlus 13 — v2.0.0-r1"
+      placeholder: "e.g. OnePlus 13 - v2.0.0-r1"
     validations:
       required: true
 
@@ -76,7 +76,7 @@ body:
     attributes:
       label: Manager & Driver Version
       description: Manager and driver version as shown in the manager app.
-      placeholder: "e.g. SukiSU-Ultra 34680 — driver 34680"
+      placeholder: "e.g. SukiSU-Ultra 34680 - driver 34680"
     validations:
       required: true
 
@@ -88,7 +88,7 @@ body:
       placeholder: |
         Works: root access, modules, Wi-Fi, Bluetooth, NFC
         Broken: fingerprint, camera (front only)
-        Not tested: —
+        Not tested: none
     validations:
       required: true
 

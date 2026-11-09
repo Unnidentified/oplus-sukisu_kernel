@@ -103,7 +103,7 @@ if [ "$susfs" = "true" ]; then
 fi
 
 [ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore_6.12.patch"
-[ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore-fix-pick-eevdf-6.12.23.patch"
+[ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore-fix-6.12.23.patch"
 [ "$adios" = "true" ] && add_patch_paths "$patches_dir/adios_ioscheduler_6.12.patch"
 add_patch_paths "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
 
@@ -165,22 +165,49 @@ fi
 if [ "$bore" = "true" ]; then
   case "$kernel" in
     6.12)
-      # Mirrors the build: vendor trees ship 750000ULL, GKI canon is 700000ULL.
-      sed -i.bak 's/750000ULL/700000ULL/g; s/0\.75 msec/0.70 msec/g' \
+      # Mirrors the build: vendor trees ship 750000ULL and a 0.75 msec comment,
+      # GKI canon is 700000ULL / 0.70 msec. Bracket expressions keep the sed
+      # free of backslashes.
+      sed -i.bak 's/750000ULL/700000ULL/g; s/0[.]75 msec/0.70 msec/g' \
         "$kernel_dir/kernel/sched/fair.c" 2>/dev/null || true
       rm -f "$kernel_dir/kernel/sched/fair.c.bak"
-      # 6.12.23 still has the older pick_eevdf() form, so the parity-guard hunk
-      # rejects. Mirror the build: re-apply it against that form.
+      # -F0 mirrors the build: with fuzz the pick_eevdf hunk lands in the wrong
+      # place on 6.12.23 instead of rejecting.
       rc=0
-      ( cd "$kernel_dir" && patch -p1 --forward --ignore-whitespace -F3 < "$patches_dir/bore_6.12.patch" ) || rc=$?
+      ( cd "$kernel_dir" && patch -p1 --forward --ignore-whitespace -F0 < "$patches_dir/bore_6.12.patch" ) || rc=$?
       [ "$rc" -le 1 ] || fail "BORE: patch failed seriously (rc=$rc)"
       if [ -f "$kernel_dir/kernel/sched/fair.c.rej" ]; then
-        log "BORE: pick_eevdf rejected, applying adapted parity guard"
+        rej_hunks=$(grep -c '^@@' "$kernel_dir/kernel/sched/fair.c.rej" || true)
+        if [ "$rej_hunks" != "2" ] \
+           || ! grep -q 'if (curr && protect && protect_slice(curr))' "$kernel_dir/kernel/sched/fair.c.rej" \
+           || ! grep -q 'se_bore(curr)->burst_time += delta_exec' "$kernel_dir/kernel/sched/fair.c.rej"; then
+          cat "$kernel_dir/kernel/sched/fair.c.rej" >&2
+          fail "BORE: unexpected rejects"
+        fi
+        log "BORE: 6.12.23 divergences detected, applying adapted hunks"
+        rc=0
+        ( cd "$kernel_dir" && patch -p1 --forward -F0 < "$patches_dir/bore-fix-6.12.23.patch" ) || rc=$?
+        [ "$rc" -eq 0 ] || fail "BORE: adapted hunks did not apply (rc=$rc)"
         rm -f "$kernel_dir/kernel/sched/fair.c.rej"
-        apply "BORE pick_eevdf fix" "$patches_dir/bore-fix-pick-eevdf-6.12.23.patch"
       else
         log "BORE: clean"
       fi
+      # Post-conditions, same as the build.
+      for needle in \
+        'static const unsigned int nsecs_per_tick' \
+        'unsigned int sysctl_sched_min_base_slice' \
+        'void sched_update_min_base_slice(void)' \
+        'se_bore(curr)->burst_time += delta_exec'; do
+        grep -qF "$needle" "$kernel_dir/kernel/sched/fair.c" \
+          || fail "BORE: missing '$needle'"
+      done
+      guard_ctx=$(grep -A2 'sched_burst_parity_threshold < cfs_rq->nr_running' "$kernel_dir/kernel/sched/fair.c" || true)
+      case "$guard_ctx" in
+        *'return curr;'*) ;;
+        *) fail "BORE: parity guard is not in front of return curr" ;;
+      esac
+      grep -q 'CONFIG_SCHED_BORE' "$kernel_dir/kernel/sched/sched.h" \
+        || fail "BORE: kernel/sched/sched.h was not patched"
       ;;
     *) log "BORE: no patch for $kernel, skipped" ;;
   esac

@@ -28,7 +28,7 @@ body:
     attributes:
       label: Device Name & Model Number
       description: Full commercial name and model number.
-      placeholder: "e.g. OnePlus 13T — PHC110"
+      placeholder: "e.g. OnePlus 13T - PHC110"
     validations:
       required: true
 
@@ -45,7 +45,7 @@ body:
     attributes:
       label: Current Android / ROM Version
       description: Android version and OEM firmware version the device shipped with or is currently running.
-      placeholder: "e.g. Android 15 — OxygenOS 15.0"
+      placeholder: "e.g. Android 15 - OxygenOS 15.0"
     validations:
       required: true
 

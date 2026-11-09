@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run — only report, do not open issue'
+        description: 'Dry run - only report, do not open issue'
         required: false
         default: 'false'
         type: boolean
@@ -52,7 +52,7 @@ jobs:
           fi
           echo "::endgroup::"
 
-      - name: Compare configs — detect new devices
+      - name: Compare configs - detect new devices
         id: compare
         if: steps.fetch-upstream.outputs.upstream_available == 'true'
         run: |
@@ -81,7 +81,7 @@ jobs:
             cat /tmp/new_devices.txt
           else
             echo "new_found=false" >> "$GITHUB_OUTPUT"
-            echo " No new devices found — you are up to date with upstream"
+            echo " No new devices found - you are up to date with upstream"
           fi
           echo "::endgroup::"
 
@@ -159,7 +159,7 @@ jobs:
               ISSUE_BODY+="---\n\n"
             else
               ISSUE_BODY+="### \`$device_name\` (\`$os_folder\`)\n"
-              ISSUE_BODY+="> _Could not fetch config content — check upstream manually._\n\n"
+              ISSUE_BODY+="> _Could not fetch config content - check upstream manually._\n\n"
               ISSUE_BODY+="---\n\n"
             fi
           done < /tmp/new_devices.txt
@@ -188,7 +188,7 @@ jobs:
             --json title --jq '.[].title' | grep -c "New OnePlus" || true)
 
           if [ "$EXISTING" -gt 0 ]; then
-            echo " An open new-device issue already exists — adding a comment instead"
+            echo " An open new-device issue already exists - adding a comment instead"
             ISSUE_NUMBER=$(gh issue list --state open --label "new-device" \
               --json number --jq '.[0].number')
             gh issue comment "$ISSUE_NUMBER" \

@@ -3,7 +3,7 @@
 
 Two layers:
 
-1. Schema — configs/schema.json, checked with a small built-in validator so this
+1. Schema - configs/schema.json, checked with a small built-in validator so this
    script has no third-party dependencies and cannot break because a runner
    image changed.
 2. Cross-file invariants that a per-file schema cannot express:

@@ -925,7 +925,7 @@ runs:
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
           # A pre-seeded checkout (cache-warmer shares one fetch across all matrix
-          # jobs) wins — avoids N parallel GitLab fetches that trigger 403s.
+          # jobs) wins - avoids N parallel GitLab fetches that trigger 403s.
           if [ -d susfs4ksu/.git ] && git -C susfs4ksu rev-parse --verify --quiet "$SUSFS_BRANCH^{commit}" >/dev/null 2>&1; then
             echo " susfs4ksu already seeded at $SUSFS_BRANCH, skipping fetch"
           else
@@ -1600,8 +1600,8 @@ runs:
         # code, so the build silently accepted rejects and carried on with
         # SUSFS hooks missing from the kernel.
         #
-        # $KERNEL_PLATFORM_FOLDER is the superset — KernelSU and KernelSU-Next
-        # both live inside it — so one scan covers every tree we patch.
+        # $KERNEL_PLATFORM_FOLDER is the superset - KernelSU and KernelSU-Next
+        # both live inside it - so one scan covers every tree we patch.
         rej_files=$(find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" 2>/dev/null | sort || true)
         if [ -n "$rej_files" ]; then
           echo "::error::SUSFS / SukiSU-Ultra patches did not apply cleanly. Found .rej files:"
@@ -1723,23 +1723,39 @@ runs:
           echo "   BORE already present in this tree, skipping"
           echo "::endgroup::"; exit 0
         fi
-        # OnePlus vendor trees ship a 750000ULL base_slice that rejects mid-hunk;
-        # GKI canon is 700000ULL and BORE overrides base_slice anyway (dead code).
-        sed -i 's/750000ULL/700000ULL/g; s/0\\.75 msec/0.70 msec/g' kernel/sched/fair.c
+        # OnePlus vendor trees ship a 750000ULL base_slice and a 0.75 msec
+        # comment; GKI canon is 700000ULL / 0.70 msec. Normalise first so the
+        # patch matches exactly. Bracket expressions keep the sed free of
+        # backslashes, which a YAML block scalar passes through verbatim.
+        sed -i 's/750000ULL/700000ULL/g; s/0[.]75 msec/0.70 msec/g' kernel/sched/fair.c
+        # -F0: every hunk must match its context exactly. With fuzz the
+        # pick_eevdf hunk silently lands inside the heap-search loop on
+        # 6.12.23, which changes the pick logic instead of guarding it.
         set +e
-        patch -p1 --ignore-whitespace -F3 < "$PATCH"
+        patch -p1 --ignore-whitespace -F0 < "$PATCH"
         patch_rc=$?
         set -e
         if [ "$patch_rc" -gt 1 ]; then
           echo "::error::BORE patch failed seriously (rc=$patch_rc)"
           exit "$patch_rc"
         fi
-        # 6.12.23 (OnePlus sm8850 16.0.0) still has the older pick_eevdf() form,
-        # so the run-to-parity hunk rejects. Re-apply the same guard against it.
+        # Two hunks are written against 6.12.44+ and reject on OnePlus 6.12.23:
+        # __pick_eevdf() still has the older RUN_TO_PARITY form, and
+        # update_curr() calls update_min_vruntime() before the hunk's trailing
+        # context. Re-apply both against the 6.12.23 shapes. Anything else in
+        # the reject file is a real failure, so check before dropping it.
         if [ -f kernel/sched/fair.c.rej ]; then
-          echo "   BORE: pick_eevdf rejected, applying adapted parity guard"
+          rej_hunks="$(grep -c '^@@' kernel/sched/fair.c.rej || true)"
+          if [ "$rej_hunks" != "2" ] \
+             || ! grep -q 'if (curr && protect && protect_slice(curr))' kernel/sched/fair.c.rej \
+             || ! grep -q 'se_bore(curr)->burst_time += delta_exec' kernel/sched/fair.c.rej; then
+            echo "::error::BORE: unexpected rejects in kernel/sched/fair.c.rej"
+            cat kernel/sched/fair.c.rej
+            exit 1
+          fi
+          echo "   BORE: 6.12.23 divergences detected, applying adapted hunks"
+          patch -p1 --forward -F0 < "${GITHUB_ACTION_PATH}/patches/bore-fix-6.12.23.patch"
           rm -f kernel/sched/fair.c.rej
-          patch -p1 --forward < "${GITHUB_ACTION_PATH}/patches/bore-fix-pick-eevdf-6.12.23.patch"
         fi
         left="$(find . -name '*.rej' | sort)"
         if [ -n "$left" ]; then
@@ -1748,15 +1764,35 @@ runs:
           exit 1
         fi
         find . -name '*.orig' -delete
-        # The patch moves the normalized_sysctl_sched_base_slice declaration into
-        # the !CONFIG_SCHED_BORE branch, but its set_protect_slice() still uses it
-        # unconditionally -> undeclared identifier on GKI. Point it at the live one.
+        # The patch moves the normalized_sysctl_sched_base_slice declaration
+        # into the !CONFIG_SCHED_BORE branch, but GKI's set_protect_slice()
+        # still uses it unconditionally -> undeclared identifier. Point it at
+        # the live one.
         if grep -q 'u64 slice = normalized_sysctl_sched_base_slice;' kernel/sched/fair.c; then
           sed -i -E 's/^([[:space:]]*)u64 slice = normalized_sysctl_sched_base_slice;/\1u64 slice = sysctl_sched_base_slice;/' kernel/sched/fair.c
           grep -q 'u64 slice = sysctl_sched_base_slice;' kernel/sched/fair.c \
             || { echo "::error::set_protect_slice transform did not apply"; exit 1; }
           echo "   set_protect_slice() now tracks sysctl_sched_base_slice"
         fi
+        # Post-conditions. A half-applied patch must fail here, not at compile
+        # time three minutes into the build.
+        for needle in \
+          'static const unsigned int nsecs_per_tick' \
+          'unsigned int sysctl_sched_min_base_slice' \
+          'void sched_update_min_base_slice(void)' \
+          'se_bore(curr)->burst_time += delta_exec'; do
+          grep -qF "$needle" kernel/sched/fair.c \
+            || { echo "::error::BORE: missing '$needle' in kernel/sched/fair.c"; exit 1; }
+        done
+        # The parity guard must sit directly in front of `return curr;`, not
+        # somewhere else in __pick_eevdf().
+        guard_ctx="$(grep -A2 'sched_burst_parity_threshold < cfs_rq->nr_running' kernel/sched/fair.c || true)"
+        case "$guard_ctx" in
+          *'return curr;'*) ;;
+          *) echo "::error::BORE: parity guard is not in front of return curr"; exit 1 ;;
+        esac
+        grep -q 'CONFIG_SCHED_BORE' kernel/sched/sched.h \
+          || { echo "::error::BORE: kernel/sched/sched.h was not patched"; exit 1; }
         for config in $(find arch/arm64/configs -type f -name "*defconfig"); do
           echo "CONFIG_SCHED_BORE=y" >> "$config"
         done
@@ -2222,7 +2258,7 @@ runs:
         echo "::group::Add DAMON"
         # Android 17's GKI ships CONFIG_DAMON=y; android16-6.12 does not. DAMON
         # is a data access monitor, so it costs nothing until a kdamond is
-        # actually started — enabling it adds the capability, not the overhead.
+        # actually started - enabling it adds the capability, not the overhead.
         #
         # DAMON_VADDR / DAMON_PADDR / DAMON_SYSFS already default to DAMON, but
         # are spelled out so a future Kconfig change cannot silently drop them.
@@ -2552,7 +2588,7 @@ runs:
 
         if [ "${OP_MLGO:-false}" = "true" ]; then
           # MLGO: ML-guided register allocation (release advisor). Requires a
-          # clang built with +mlgo (our r547379 prebuilt is) — no external model.
+          # clang built with +mlgo (our r547379 prebuilt is) - no external model.
           export KCFLAGS="$KCFLAGS -mllvm -regalloc-enable-advisor=release"
           echo " MLGO enabled: -mllvm -regalloc-enable-advisor=release"
         fi
@@ -2658,7 +2694,7 @@ runs:
           sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
         fi
         
-        # CC_OPTIMIZE_FOR_PERFORMANCE_O3 was removed in 6.0 — it only ever
+        # CC_OPTIMIZE_FOR_PERFORMANCE_O3 was removed in 6.0 - it only ever
         # applied to ARC. On 6.1+ the symbol does not exist, so writing it is a
         # no-op that olddefconfig silently drops. -O3 still reaches the compiler
         # through KCFLAGS_EXTRA, which is the part that actually does something.
@@ -2766,7 +2802,7 @@ runs:
         audit "${OP_AUTOFDO:-false}" AUTOFDO_CLANG      "AutoFDO"             6.12
 
         # Baseline hardening is unconditional on 6.6+, so there is no config
-        # flag to key off — check it directly.
+        # flag to key off - check it directly.
         if [ "$(printf '%s\n' "$KERNEL_VER" "6.6" | sort -V | tail -n1)" = "$KERNEL_VER" ]; then
           for sym in LIST_HARDENED RANDOM_KMALLOC_CACHES; do
             if grep -q "^CONFIG_${sym}=y" "$OUT/.config"; then

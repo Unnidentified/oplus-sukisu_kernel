@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           # Mirrors the matrix build in build-kernel-release.yml. A JSON file
           # under configs/ without a string "model" makes the device filter
-          # abort with "startswith() requires string inputs" — which is how
+          # abort with "startswith() requires string inputs" - which is how
           # configs/schema.json took down every device-specific build.
           echo "[" > /tmp/matrix.json
           mapfile -t files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
@@ -98,8 +98,8 @@ jobs:
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
           # Structural problems (invalid action metadata, duplicate choice
           # options, bad expressions) are fatal. The shellcheck codes below are
-          # a pre-existing backlog in the 3000-line build action — mostly
-          # unquoted variables — suppressed so this gate reports new problems
+          # a pre-existing backlog in the 3000-line build action - mostly
+          # unquoted variables - suppressed so this gate reports new problems
           # instead of re-reporting the old ones. Burn the backlog down
           # separately, then drop the matching -ignore line.
           #
@@ -173,7 +173,7 @@ jobs:
             exit 0
           fi
           # Blocking entries are refs we control (a pinned susfs_hash, or a KMI
-          # key whose workflow default is a pinned SHA) — a failure there is a
+          # key whose workflow default is a pinned SHA) - a failure there is a
           # regression in this repo. The rest track a moving upstream branch
           # tip, so a failure is drift we cannot fix here: surface it as a
           # warning annotation instead of failing the PR.
@@ -199,7 +199,7 @@ jobs:
           # Mirrors the androidXX_susfs_branch_or_commit input defaults in
           # build-kernel-release.yml. A key with a pinned default is something
           # we control, so its canary blocks. A key whose default is a moving
-          # branch tip is upstream drift — worth reporting, not worth blocking
+          # branch tip is upstream drift - worth reporting, not worth blocking
           # an unrelated PR over.
           PINNED_DEFAULT_KEYS = {"android16-6.12"}
 

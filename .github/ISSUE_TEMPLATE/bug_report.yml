@@ -9,7 +9,7 @@ body:
         > [!IMPORTANT]
         > These kernels are built for **Stock ROMs only** (OOS/COS). Do **not** report issues on custom ROMs.
         > If you are using a non-OnePlus device, make sure you have disabled dm-verity before flashing.
-        > Fill in **all required fields** — incomplete reports will be closed without investigation.
+        > Fill in **all required fields** - incomplete reports will be closed without investigation.
 
   - type: checkboxes
     id: prerequisites
@@ -37,8 +37,8 @@ body:
     id: device
     attributes:
       label: Device Name & Model
-      description: Full device name and model number (e.g. OnePlus 13 — PHB110, Realme GT 7 Pro — RMX5111).
-      placeholder: "e.g. OnePlus 13 — PHB110"
+      description: Full device name and model number (e.g. OnePlus 13 - PHB110, Realme GT 7 Pro - RMX5111).
+      placeholder: "e.g. OnePlus 13 - PHB110"
     validations:
       required: true
 
@@ -156,8 +156,8 @@ body:
       label: Regression?
       description: Was this working on a previous kernel version?
       options:
-        - "Yes — worked on a previous version"
-        - "No — never worked"
+        - "Yes - worked on a previous version"
+        - "No - never worked"
         - "Unknown / first install"
     validations:
       required: true
@@ -197,7 +197,7 @@ body:
     attributes:
       label: SYSTEM_LAST_KMSG (OnePlus devices only)
       description: |
-        **OnePlus devices only** — leave blank if non-OnePlus.
+        **OnePlus devices only** - leave blank if non-OnePlus.
         Attach the file `/data/persist_log/backup/SYSTEM_LAST_KMSG.txt` by dragging and dropping it into this field, or click the attachment icon below the text box.
         Also include the **file modification date** (visible in file properties or via `ls -la /data/persist_log/backup/SYSTEM_LAST_KMSG.txt`).
       placeholder: |

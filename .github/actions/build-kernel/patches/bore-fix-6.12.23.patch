@@ -1,0 +1,53 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] sched/fair: adapt the BORE hunks that reject on 6.12.23
+
+bore_6.12.patch is written against 6.12.44+. Two of its hunks do not apply
+to OnePlus's sm8850 16.0.0 tree (6.12.23):
+
+1. __pick_eevdf() still carries the older run-to-parity form
+
+	if (sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr))
+		return curr;
+
+   instead of the 6.12.44+ form
+
+	if (curr && protect && protect_slice(curr))
+		return curr;
+
+2. update_curr() calls update_min_vruntime() right after update_deadline(),
+   so the trailing context of the burst-accounting hunk does not match.
+
+This patch re-applies both hunks against the 6.12.23 shapes. The inserted
+code is identical to what bore_6.12.patch inserts; only the surrounding
+context differs.
+
+The build applies this only when kernel/sched/fair.c.rej exists, and only
+after the main BORE patch has run with --fuzz=0.
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -1004,6 +1004,10 @@
+ 		curr = NULL;
+ 
+ 	if (sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr))
++#ifdef CONFIG_SCHED_BORE
++		if (!(likely(sched_bore) && likely(sched_burst_parity_threshold) &&
++			sched_burst_parity_threshold < cfs_rq->nr_running))
++#endif // CONFIG_SCHED_BORE
+ 		return curr;
+ 
+ 	/* Pick the leftmost entity if it's eligible */
+@@ -1325,6 +1329,12 @@
+ 	if (unlikely(delta_exec <= 0))
+ 		return;
+ 
++#ifdef CONFIG_SCHED_BORE
++	if (se_bore(curr)) {
++		se_bore(curr)->burst_time += delta_exec;
++		update_burst_penalty(curr);
++	}
++#endif // CONFIG_SCHED_BORE
+ 	curr->vruntime += calc_delta_fair(delta_exec, curr);
+ 	resched = update_deadline(cfs_rq, curr);
+ 	update_min_vruntime(cfs_rq);

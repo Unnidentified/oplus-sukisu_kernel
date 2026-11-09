@@ -1723,23 +1723,39 @@ runs:
           echo "   BORE already present in this tree, skipping"
           echo "::endgroup::"; exit 0
         fi
-        # OnePlus vendor trees ship a 750000ULL base_slice that rejects mid-hunk;
-        # GKI canon is 700000ULL and BORE overrides base_slice anyway (dead code).
-        sed -i 's/750000ULL/700000ULL/g; s/0\\.75 msec/0.70 msec/g' kernel/sched/fair.c
+        # OnePlus vendor trees ship a 750000ULL base_slice and a 0.75 msec
+        # comment; GKI canon is 700000ULL / 0.70 msec. Normalise first so the
+        # patch matches exactly. Bracket expressions keep the sed free of
+        # backslashes, which a YAML block scalar passes through verbatim.
+        sed -i 's/750000ULL/700000ULL/g; s/0[.]75 msec/0.70 msec/g' kernel/sched/fair.c
+        # -F0: every hunk must match its context exactly. With fuzz the
+        # pick_eevdf hunk silently lands inside the heap-search loop on
+        # 6.12.23, which changes the pick logic instead of guarding it.
         set +e
-        patch -p1 --ignore-whitespace -F3 < "$PATCH"
+        patch -p1 --ignore-whitespace -F0 < "$PATCH"
         patch_rc=$?
         set -e
         if [ "$patch_rc" -gt 1 ]; then
           echo "::error::BORE patch failed seriously (rc=$patch_rc)"
           exit "$patch_rc"
         fi
-        # 6.12.23 (OnePlus sm8850 16.0.0) still has the older pick_eevdf() form,
-        # so the run-to-parity hunk rejects. Re-apply the same guard against it.
+        # Two hunks are written against 6.12.44+ and reject on OnePlus 6.12.23:
+        # __pick_eevdf() still has the older RUN_TO_PARITY form, and
+        # update_curr() calls update_min_vruntime() before the hunk's trailing
+        # context. Re-apply both against the 6.12.23 shapes. Anything else in
+        # the reject file is a real failure, so check before dropping it.
         if [ -f kernel/sched/fair.c.rej ]; then
-          echo "   BORE: pick_eevdf rejected, applying adapted parity guard"
+          rej_hunks="$(grep -c '^@@' kernel/sched/fair.c.rej || true)"
+          if [ "$rej_hunks" != "2" ] \
+             || ! grep -q 'if (curr && protect && protect_slice(curr))' kernel/sched/fair.c.rej \
+             || ! grep -q 'se_bore(curr)->burst_time += delta_exec' kernel/sched/fair.c.rej; then
+            echo "::error::BORE: unexpected rejects in kernel/sched/fair.c.rej"
+            cat kernel/sched/fair.c.rej
+            exit 1
+          fi
+          echo "   BORE: 6.12.23 divergences detected, applying adapted hunks"
+          patch -p1 --forward -F0 < "${GITHUB_ACTION_PATH}/patches/bore-fix-6.12.23.patch"
           rm -f kernel/sched/fair.c.rej
-          patch -p1 --forward < "${GITHUB_ACTION_PATH}/patches/bore-fix-pick-eevdf-6.12.23.patch"
         fi
         left="$(find . -name '*.rej' | sort)"
         if [ -n "$left" ]; then
@@ -1748,15 +1764,35 @@ runs:
           exit 1
         fi
         find . -name '*.orig' -delete
-        # The patch moves the normalized_sysctl_sched_base_slice declaration into
-        # the !CONFIG_SCHED_BORE branch, but its set_protect_slice() still uses it
-        # unconditionally -> undeclared identifier on GKI. Point it at the live one.
+        # The patch moves the normalized_sysctl_sched_base_slice declaration
+        # into the !CONFIG_SCHED_BORE branch, but GKI's set_protect_slice()
+        # still uses it unconditionally -> undeclared identifier. Point it at
+        # the live one.
         if grep -q 'u64 slice = normalized_sysctl_sched_base_slice;' kernel/sched/fair.c; then
           sed -i -E 's/^([[:space:]]*)u64 slice = normalized_sysctl_sched_base_slice;/\1u64 slice = sysctl_sched_base_slice;/' kernel/sched/fair.c
           grep -q 'u64 slice = sysctl_sched_base_slice;' kernel/sched/fair.c \
             || { echo "::error::set_protect_slice transform did not apply"; exit 1; }
           echo "   set_protect_slice() now tracks sysctl_sched_base_slice"
         fi
+        # Post-conditions. A half-applied patch must fail here, not at compile
+        # time three minutes into the build.
+        for needle in \
+          'static const unsigned int nsecs_per_tick' \
+          'unsigned int sysctl_sched_min_base_slice' \
+          'void sched_update_min_base_slice(void)' \
+          'se_bore(curr)->burst_time += delta_exec'; do
+          grep -qF "$needle" kernel/sched/fair.c \
+            || { echo "::error::BORE: missing '$needle' in kernel/sched/fair.c"; exit 1; }
+        done
+        # The parity guard must sit directly in front of `return curr;`, not
+        # somewhere else in __pick_eevdf().
+        guard_ctx="$(grep -A2 'sched_burst_parity_threshold < cfs_rq->nr_running' kernel/sched/fair.c || true)"
+        case "$guard_ctx" in
+          *'return curr;'*) ;;
+          *) echo "::error::BORE: parity guard is not in front of return curr"; exit 1 ;;
+        esac
+        grep -q 'CONFIG_SCHED_BORE' kernel/sched/sched.h \
+          || { echo "::error::BORE: kernel/sched/sched.h was not patched"; exit 1; }
         for config in $(find arch/arm64/configs -type f -name "*defconfig"); do
           echo "CONFIG_SCHED_BORE=y" >> "$config"
         done

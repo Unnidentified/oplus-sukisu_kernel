@@ -69,7 +69,11 @@ Everything below is per-device, set in `configs/<os>/<MODEL>.json`. The schema i
 
 `"bore": true` applies `bore_6.12.patch` and sets `CONFIG_SCHED_BORE=y`. Runtime toggle: `/proc/sys/kernel/sched_bore`.
 
-The patch is written against 6.12.44+, where `pick_eevdf()` tests a local `protect` flag. OnePlus's 6.12.23 tree still has the older `sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr)` form, so that one hunk rejects. The build detects `kernel/sched/fair.c.rej`, drops it, and applies `patches/bore-fix-pick-eevdf-6.12.23.patch` - the same guard against the older form. `OP15-COS17` takes the clean path and never touches the fixup.
+The patch is written against 6.12.44+. Two of its hunks do not match OnePlus's 6.12.23 tree: `__pick_eevdf()` still tests `sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr)` instead of a local `protect` flag, and `update_curr()` calls `update_min_vruntime()` before the burst-accounting hunk's trailing context. Both reject.
+
+The build applies the patch with `-F0`, so a hunk either matches its context exactly or rejects. It then checks that `kernel/sched/fair.c.rej` holds exactly those two hunks, applies `patches/bore-fix-6.12.23.patch` against the 6.12.23 shapes, and verifies the result with grep before continuing. `OP15-COS17` takes the clean path and never touches the fixup.
+
+Fuzz is deliberately off. With `-F3` the `__pick_eevdf()` hunk does not reject on 6.12.23, it lands inside the heap-search loop instead, which changes the pick logic rather than guarding it.
 
 ### ADIOS
 

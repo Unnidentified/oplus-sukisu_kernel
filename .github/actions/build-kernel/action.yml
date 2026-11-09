@@ -47,6 +47,10 @@ inputs:
     description: 'Force an LTO mode for this build only (none, thin, full). Empty uses the value from the device config. Exists so LTO can be tested on a profile without editing its config and committing the change.'
     required: false
     default: ''
+  release_tag:
+    description: 'Release tag this run will be published under (e.g. v2.3.0-r3). Its -rN revision is appended to the zip name so the artifact matches the release asset. Empty leaves the name without a revision.'
+    required: false
+    default: ''
 
 outputs:
   kernel_version:
@@ -128,6 +132,9 @@ runs:
           lto_override=""
         fi
         echo "OP_LTO_OVERRIDE=$lto_override" >> "$GITHUB_ENV"
+        # Release tag for this run, resolved once in the workflow so every job
+        # agrees on it. Only used to suffix the zip name.
+        echo "OP_RELEASE_TAG=${{ inputs.release_tag }}" >> "$GITHUB_ENV"
         echo "Parsed config:"
         jq '.' /tmp/config.json
 
@@ -3112,17 +3119,27 @@ runs:
         fi
         
         ZIP_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
+        # Carry the release revision into the file name, so the artifact and the
+        # release asset are the same string. v2.3.0-r3 -> -r3. A tag without a
+        # revision (v2.3.0) or no tag at all leaves the name unsuffixed.
+        ZIP_REV=""
+        if [ -n "${OP_RELEASE_TAG:-}" ]; then
+          rev="${OP_RELEASE_TAG##*-r}"
+          if [ "$rev" != "$OP_RELEASE_TAG" ] && [[ "$rev" =~ ^[0-9]+$ ]]; then
+            ZIP_REV="-r$rev"
+          fi
+        fi
         if [ "${KSUMODE:-lkm}" = "lkm" ]; then
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}_LKM.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}_LKM.zip"
           else
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}_LKM.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}_LKM.zip"
           fi
         else
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}.zip"
           else
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}.zip"
           fi
         fi
         mkdir -p "$ARTIFACTS_FOLDER"

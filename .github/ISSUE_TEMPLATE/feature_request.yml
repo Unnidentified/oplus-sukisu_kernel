@@ -8,7 +8,7 @@ body:
       value: |
         > [!NOTE]
         > Use this template to request the addition of a kernel patch or feature to this build (e.g. droidspace, ntsync, hmbird, scheduler tweaks, etc.).
-        > SukiSU-Ultra and SUSFS options are managed by their respective upstream repositories — open issues there instead.
+        > SukiSU-Ultra and SUSFS options are managed by their respective upstream repositories - open issues there instead.
 
   - type: checkboxes
     id: prerequisites

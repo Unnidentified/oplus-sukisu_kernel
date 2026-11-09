@@ -8,7 +8,7 @@ on:
         required: true
         default: 'v2.0.0'
       dry_run:
-        description: 'Dry run — report only, do not open GitHub issue'
+        description: 'Dry run - report only, do not open GitHub issue'
         required: false
         default: 'false'
         type: boolean
@@ -30,7 +30,7 @@ jobs:
       - name: Fetch latest SUSFS tag from GitLab
         id: fetch
         run: |
-          # simonpunk/susfs4ksu lives on GitLab — use GitLab API
+          # simonpunk/susfs4ksu lives on GitLab - use GitLab API
           LATEST_TAG=$(curl -sf \
             "https://gitlab.com/api/v4/projects/56471372/repository/tags" \
             | jq -r '.[0].name // empty')
@@ -95,7 +95,7 @@ jobs:
             --json title --jq '.[].title' | grep -Fc "$LATEST" || true)
 
           if [ "$EXISTING" -gt 0 ]; then
-            echo " Issue for $LATEST already exists — skipping"
+            echo " Issue for $LATEST already exists - skipping"
           else
             gh issue create \
               --title "$TITLE" \
@@ -128,5 +128,5 @@ jobs:
           if [ "$UPDATE" = "true" ]; then
             echo "> **Update available:** \`$CURRENT\` → \`$LATEST\`" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "> **Up to date** — no action needed" >> "$GITHUB_STEP_SUMMARY"
+            echo "> **Up to date** - no action needed" >> "$GITHUB_STEP_SUMMARY"
           fi

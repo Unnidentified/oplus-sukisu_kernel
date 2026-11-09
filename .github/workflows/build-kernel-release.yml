@@ -469,7 +469,7 @@ jobs:
           RETRY_DELAY=5
 
           # Resolve one GitLab ref. Sets RESOLVED_SHA / RESOLVED_VERSION in the
-          # caller's scope — deliberately not a command substitution, because
+          # caller's scope - deliberately not a command substitution, because
           # array writes inside $( ) would be lost.
           RESOLVED_SHA=""
           RESOLVED_VERSION=""
@@ -565,7 +565,7 @@ jobs:
           echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
 
-          # SUSFS_VERSION — only when releasing. Every ref actually compiled in
+          # SUSFS_VERSION - only when releasing. Every ref actually compiled in
           # (defaults and pins alike) must agree, otherwise the release tag
           # would describe a version that is not in every zip.
           if [ "${{ inputs.make_release }}" = "true" ]; then
@@ -583,7 +583,7 @@ jobs:
               exit 1
             fi
 
-            # make_release=true: mismatch is a hard error — prevents wrong tag
+            # make_release=true: mismatch is a hard error - prevents wrong tag
             for ref in "${!susfs_versions_per_ref[@]}"; do
               ref_ver="${susfs_versions_per_ref[$ref]:-unknown}"
               if [ "$ref_ver" != "$susfs_base_version" ]; then
@@ -1115,7 +1115,7 @@ jobs:
             # through the matrix, so the published checksum is the one users get.
             zip_sha=$(sha256sum "./downloaded-artifacts/${zipname}.zip" 2>/dev/null | awk '{print $1}')
             zip_sha="${zip_sha:-unavailable}"
-            echo "- [\`${zipname}.zip\`](${DOWNLOAD_URL}) — ${model}, ${os_ver}, kernel \`${kernel_ver}\`" >> release_notes.md
+            echo "- [\`${zipname}.zip\`](${DOWNLOAD_URL}) - ${model}, ${os_ver}, kernel \`${kernel_ver}\`" >> release_notes.md
             echo "  - \`sha256: ${zip_sha}\`" >> release_notes.md
           done
 
@@ -1138,7 +1138,7 @@ jobs:
           ## Kernel contents
 
           - [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) ${ksu_ver_global}, compiled in-tree (\`builtin\`). Install the manager APK from its [releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).
-          - [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) ${SUSFS_BASE_VERSION} — magic mount, SUS_PATH / SUS_MOUNT / SUS_KSTAT / SUS_MAP, uname & cmdline spoofing, open redirect.
+          - [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) ${SUSFS_BASE_VERSION} - magic mount, SUS_PATH / SUS_MOUNT / SUS_KSTAT / SUS_MAP, uname & cmdline spoofing, open redirect.
           - Network/misc tweaks: BBR/BBR3, TTL, IP set, Unicode bypass.
           - [Baseband Guard](https://github.com/vc-teahouse/Baseband-guard) stays disabled, so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains keep working.
 
@@ -1150,13 +1150,13 @@ jobs:
           sha256sum <your-zip>.zip
           \`\`\`
 
-          A mismatch means a truncated or tampered download — do not flash it.
+          A mismatch means a truncated or tampered download - do not flash it.
 
           ## Flashing
 
-          Unlock the bootloader, back up your stock \`boot\` image, flash the zip with [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher) / [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher) or a custom recovery, reboot, then install the SukiSU-Ultra manager APK. Stock ROMs only — match model and OS version exactly.
+          Unlock the bootloader, back up your stock \`boot\` image, flash the zip with [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher) / [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher) or a custom recovery, reboot, then install the SukiSU-Ultra manager APK. Stock ROMs only - match model and OS version exactly.
 
-          Per-device feature toggles live in [\`configs/a16/\`](https://github.com/${REPO_OWNER}/${REPO_NAME}/tree/main/configs/a16) — fork the repo, edit the device JSON, run the Build Kernel workflow.
+          Per-device feature toggles live in [\`configs/a16/\`](https://github.com/${REPO_OWNER}/${REPO_NAME}/tree/main/configs/a16) - fork the repo, edit the device JSON, run the Build Kernel workflow.
 
           ## Changelog
 
@@ -1211,7 +1211,7 @@ jobs:
           infos=(./downloaded-artifacts/*_build-info.json)
 
           if [ ${#zips[@]} -eq 0 ]; then
-            echo "::error::No zips found in ./downloaded-artifacts — refusing to publish an empty release"
+            echo "::error::No zips found in ./downloaded-artifacts - refusing to publish an empty release"
             exit 1
           fi
 

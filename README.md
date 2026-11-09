@@ -30,12 +30,12 @@ No local toolchain needed: pick your device in GitHub Actions, and the kernel is
 
 | Input | Default | Meaning |
 |---|---|---|
-| `ksu_options` | `[{"type":"ksun","hash":"builtin"}]` | SukiSU-Ultra `builtin` branch — the only line with in-kernel `KSU_SUSFS`. `main`/`dev` ship SUSFS as a userspace extension shim only |
+| `ksu_options` | `[{"type":"ksun","hash":"builtin"}]` | SukiSU-Ultra `builtin` branch - the only line with in-kernel `KSU_SUSFS`. `main`/`dev` ship SUSFS as a userspace extension shim only |
 | `ksu_mode` | `builtin` | `builtin` compiles SukiSU into the kernel (recommended, full SUSFS support); `lkm` downloads a prebuilt `kernelsu.ko` and injects it into the ramdisk at flash time |
 | `optimize_level` | `O2` | `-O2` or `-O3`. See [O2 vs O3](#o2-vs-o3) |
 | `lto_override` | `config` | Forces an LTO mode for one run. See [LTO](#lto) |
 
-A device config can override the root branch per device with a `ksu_hash` field. The default is `builtin` (SukiSU-Ultra 34680 with in-kernel SUSFS); `main`/`dev` do **not** work — susfs's KSU-side patch rejects on their tree, so they were tried and reverted.
+A device config can override the root branch per device with a `ksu_hash` field. The default is `builtin` (SukiSU-Ultra 34680 with in-kernel SUSFS); `main`/`dev` do **not** work - susfs's KSU-side patch rejects on their tree, so they were tried and reverted.
 
 4. When the run finishes, grab the `{MODEL}_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts.
 
@@ -69,7 +69,7 @@ Everything below is per-device, set in `configs/<os>/<MODEL>.json`. The schema i
 
 `"bore": true` applies `bore_6.12.patch` and sets `CONFIG_SCHED_BORE=y`. Runtime toggle: `/proc/sys/kernel/sched_bore`.
 
-The patch is written against 6.12.44+, where `pick_eevdf()` tests a local `protect` flag. OnePlus's 6.12.23 tree still has the older `sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr)` form, so that one hunk rejects. The build detects `kernel/sched/fair.c.rej`, drops it, and applies `patches/bore-fix-pick-eevdf-6.12.23.patch` — the same guard against the older form. `OP15-COS17` takes the clean path and never touches the fixup.
+The patch is written against 6.12.44+, where `pick_eevdf()` tests a local `protect` flag. OnePlus's 6.12.23 tree still has the older `sched_feat(RUN_TO_PARITY) && curr && protect_slice(curr)` form, so that one hunk rejects. The build detects `kernel/sched/fair.c.rej`, drops it, and applies `patches/bore-fix-pick-eevdf-6.12.23.patch` - the same guard against the older form. `OP15-COS17` takes the clean path and never touches the fixup.
 
 ### ADIOS
 
@@ -79,11 +79,11 @@ The patch is written against 6.12.44+, where `pick_eevdf()` tests a local `prote
 
 `"autofdo": true` builds with Google's kernel AutoFDO profile for `android16-6.12`. Google's published numbers for this profile are 2-3% boot, 3-4% cold app launch, 8-9% binder-rpc, 12-25% binder-addints, 12-18% hwbinder and 6% on `syscall_mmap`.
 
-`gki_defconfig` already sets `CONFIG_AUTOFDO_CLANG=y`, but on its own that buys nothing: without `CLANG_AUTOFDO_PROFILE`, `scripts/Makefile.autofdo` only adds `-fdebug-info-for-profiling` and `-gmlt` — debug info nobody consumes, and no profile-guided optimisation. Every build before this one paid that cost for zero benefit. The profile is the missing half.
+`gki_defconfig` already sets `CONFIG_AUTOFDO_CLANG=y`, but on its own that buys nothing: without `CLANG_AUTOFDO_PROFILE`, `scripts/Makefile.autofdo` only adds `-fdebug-info-for-profiling` and `-gmlt` - debug info nobody consumes, and no profile-guided optimisation. Every build before this one paid that cost for zero benefit. The profile is the missing half.
 
 It is not in the pinned kernel tree: `gki/aarch64/afdo/kernel.afdo` exists on the `android16-6.12` branch but not at the `242e1a07` commit the manifest pins. The build downloads it from a pinned commit and verifies its sha256; a failed download or a hash mismatch aborts the build rather than quietly producing a kernel without AutoFDO.
 
-OnePlus's own `sm8850_b_16.0.0_oneplus_15` tree also ships `CONFIG_AUTOFDO_CLANG=y`, so the same profile applies to `OP15` on 6.12.23. The profile was generated on AOSP GKI, so functions that only exist in OnePlus's tree get no profile data — that costs the benefit on those functions, not correctness.
+OnePlus's own `sm8850_b_16.0.0_oneplus_15` tree also ships `CONFIG_AUTOFDO_CLANG=y`, so the same profile applies to `OP15` on 6.12.23. The profile was generated on AOSP GKI, so functions that only exist in OnePlus's tree get no profile data - that costs the benefit on those functions, not correctness.
 
 The profile was generated on a Pixel 10 with Google's app set, so it is not tuned to ColorOS or OxygenOS workloads. Treat the numbers above as an upper bound. Set `"autofdo": false` to revert.
 
@@ -140,7 +140,7 @@ Adding a name to the allowlist means reviewing the patch first. The external rep
 
 ### Baseline hardening
 
-Two symbols are enabled on every profile from 6.6 up, with no config flag — they are cheap enough that "should this kernel be secure" is not a per-device question:
+Two symbols are enabled on every profile from 6.6 up, with no config flag - they are cheap enough that "should this kernel be secure" is not a per-device question:
 
 | Symbol | What it does | Cost |
 |---|---|---|
@@ -156,9 +156,9 @@ Two more are deliberately **not** enabled:
 
 ### O2 vs O3
 
-`optimize_level: O3` works, but not the way the code implies. `CC_OPTIMIZE_FOR_PERFORMANCE_O3` was **removed in Linux 6.0** — it only ever applied to ARC, and Linus rejected re-adding it without substantial justification. On 6.1+ the symbol does not exist, so writing it is a no-op that `olddefconfig` drops. What actually reaches the compiler is `KCFLAGS_EXTRA="-O3"`, appended after the kernel's own `-O2`.
+`optimize_level: O3` works, but not the way the code implies. `CC_OPTIMIZE_FOR_PERFORMANCE_O3` was **removed in Linux 6.0** - it only ever applied to ARC, and Linus rejected re-adding it without substantial justification. On 6.1+ the symbol does not exist, so writing it is a no-op that `olddefconfig` drops. What actually reaches the compiler is `KCFLAGS_EXTRA="-O3"`, appended after the kernel's own `-O2`.
 
-The build now only writes the Kconfig symbol on kernels that still have it (5.10, 5.15). O3 remains available; it is not the default because it is blind — it unrolls and inlines on heuristics, growing kernel text and hurting i-cache on a phone, while AutoFDO and LTO do the same transformations guided by real profile data.
+The build now only writes the Kconfig symbol on kernels that still have it (5.10, 5.15). O3 remains available; it is not the default because it is blind - it unrolls and inlines on heuristics, growing kernel text and hurting i-cache on a phone, while AutoFDO and LTO do the same transformations guided by real profile data.
 
 ---
 
@@ -172,7 +172,7 @@ Per-device configs live in [`configs/`](configs), kernel source manifests in [`m
 | OOS 15 | 5.15 / 6.1 / 6.6 | OnePlus 12, 12R, 13, 13S, Open, Ace 3/5, Nord 4/5 |
 | OOS 16 | 6.1 / 6.6 / 6.12 | OnePlus 13, 13S, 15, 15R, 15T, Ace 6, Turbo 6, Pad 2/3/4 |
 
-Everything is built from [OnePlus's official kernel sources](https://github.com/OnePlusOSS/), so the zips target stock ROMs. Don't flash a zip across a major OTA (e.g. A15 to A16) without checking — the KMI has to match.
+Everything is built from [OnePlus's official kernel sources](https://github.com/OnePlusOSS/), so the zips target stock ROMs. Don't flash a zip across a major OTA (e.g. A15 to A16) without checking - the KMI has to match.
 
 ### OnePlus 15: which profile?
 
@@ -202,7 +202,7 @@ These configs are present but cannot currently be built: no commit on the matchi
 | `OP-ACE-5-PRO-6.6.30` | android15-6.6 | `fs/namespace.c`, `fs/proc/base.c` |
 | `OP11` (A16 / `oneplus_11_w.xml`) | android13-5.15 | `fs/namespace.c`, `fs/proc/task_mmu.c` |
 
-The A14 and A15 `OP11` profiles are pinned to `8c4fa71` and do build. Fixing the rest needs either a SUSFS patch rebased onto those bases or version-specific fixups in the build — neither exists today.
+The A14 and A15 `OP11` profiles are pinned to `8c4fa71` and do build. Fixing the rest needs either a SUSFS patch rebased onto those bases or version-specific fixups in the build - neither exists today.
 
 ---
 
@@ -220,7 +220,7 @@ Each release lists a `sha256` next to every zip. Check it before flashing:
 sha256sum OP15-COS17_android16-6.12.69-SuSFS_v2.3.0.zip
 ```
 
-Every zip also ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, the image/zip checksums, and a `features` block — `lto`, `autofdo` with the profile hash, `damon`, `bore`, `adios`, `mlgo`, and `patchset_commit` for the external patch repo. Two builds of the same version stay distinguishable.
+Every zip also ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, the image/zip checksums, and a `features` block - `lto`, `autofdo` with the profile hash, `damon`, `bore`, `adios`, `mlgo`, and `patchset_commit` for the external patch repo. Two builds of the same version stay distinguishable.
 
 ---
 
@@ -232,7 +232,7 @@ Things a current Android kernel normally has that this one does not. Listed so t
 |---|---|---|
 | **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** | Zeroes freed heap memory, kills use-after-free info leaks | Perf cost is real; `INIT_ON_ALLOC_DEFAULT_ON` is already on |
 | **`CONFIG_ARM64_MTE`** | Memory tagging; GrapheneOS enables it for the kernel | Needs hardware support and a userspace that tolerates the tag checks |
-| **16 KB page size** | Required for new Android 16+ devices | Not a toggle — changing it breaks every existing binary on the device |
+| **16 KB page size** | Required for new Android 16+ devices | Not a toggle; changing it breaks every existing binary on the device |
 
 Already on and easy to assume otherwise: `CONFIG_RANDOMIZE_KSTACK_OFFSET` defaults to `y` and both kernel trees select `HAVE_ARCH_RANDOMIZE_KSTACK_OFFSET`, so it is active without appearing in `gki_defconfig`.
 

@@ -925,7 +925,7 @@ runs:
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
           # A pre-seeded checkout (cache-warmer shares one fetch across all matrix
-          # jobs) wins — avoids N parallel GitLab fetches that trigger 403s.
+          # jobs) wins - avoids N parallel GitLab fetches that trigger 403s.
           if [ -d susfs4ksu/.git ] && git -C susfs4ksu rev-parse --verify --quiet "$SUSFS_BRANCH^{commit}" >/dev/null 2>&1; then
             echo " susfs4ksu already seeded at $SUSFS_BRANCH, skipping fetch"
           else
@@ -1600,8 +1600,8 @@ runs:
         # code, so the build silently accepted rejects and carried on with
         # SUSFS hooks missing from the kernel.
         #
-        # $KERNEL_PLATFORM_FOLDER is the superset — KernelSU and KernelSU-Next
-        # both live inside it — so one scan covers every tree we patch.
+        # $KERNEL_PLATFORM_FOLDER is the superset - KernelSU and KernelSU-Next
+        # both live inside it - so one scan covers every tree we patch.
         rej_files=$(find "$KERNEL_PLATFORM_FOLDER" -name "*.rej" 2>/dev/null | sort || true)
         if [ -n "$rej_files" ]; then
           echo "::error::SUSFS / SukiSU-Ultra patches did not apply cleanly. Found .rej files:"
@@ -2222,7 +2222,7 @@ runs:
         echo "::group::Add DAMON"
         # Android 17's GKI ships CONFIG_DAMON=y; android16-6.12 does not. DAMON
         # is a data access monitor, so it costs nothing until a kdamond is
-        # actually started — enabling it adds the capability, not the overhead.
+        # actually started - enabling it adds the capability, not the overhead.
         #
         # DAMON_VADDR / DAMON_PADDR / DAMON_SYSFS already default to DAMON, but
         # are spelled out so a future Kconfig change cannot silently drop them.
@@ -2552,7 +2552,7 @@ runs:
 
         if [ "${OP_MLGO:-false}" = "true" ]; then
           # MLGO: ML-guided register allocation (release advisor). Requires a
-          # clang built with +mlgo (our r547379 prebuilt is) — no external model.
+          # clang built with +mlgo (our r547379 prebuilt is) - no external model.
           export KCFLAGS="$KCFLAGS -mllvm -regalloc-enable-advisor=release"
           echo " MLGO enabled: -mllvm -regalloc-enable-advisor=release"
         fi
@@ -2658,7 +2658,7 @@ runs:
           sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
         fi
         
-        # CC_OPTIMIZE_FOR_PERFORMANCE_O3 was removed in 6.0 — it only ever
+        # CC_OPTIMIZE_FOR_PERFORMANCE_O3 was removed in 6.0 - it only ever
         # applied to ARC. On 6.1+ the symbol does not exist, so writing it is a
         # no-op that olddefconfig silently drops. -O3 still reaches the compiler
         # through KCFLAGS_EXTRA, which is the part that actually does something.
@@ -2766,7 +2766,7 @@ runs:
         audit "${OP_AUTOFDO:-false}" AUTOFDO_CLANG      "AutoFDO"             6.12
 
         # Baseline hardening is unconditional on 6.6+, so there is no config
-        # flag to key off — check it directly.
+        # flag to key off - check it directly.
         if [ "$(printf '%s\n' "$KERNEL_VER" "6.6" | sort -V | tail -n1)" = "$KERNEL_VER" ]; then
           for sym in LIST_HARDENED RANDOM_KMALLOC_CACHES; do
             if grep -q "^CONFIG_${sym}=y" "$OUT/.config"; then

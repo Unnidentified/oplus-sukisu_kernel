@@ -478,24 +478,21 @@ jobs:
             local ref="$1" label="$2" attempt=0 response sha ver query
             RESOLVED_SHA=""
             RESOLVED_VERSION=""
-            if [ "${{ inputs.make_release }}" = "true" ]; then
-              query="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${ref}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${ref}\") { nodes { rawBlob } } } } }"
-            else
-              query="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${ref}\") { sha } } } }"
-            fi
+            # susfs.h is fetched on every build, not only for releases: the zip
+            # name carries the release revision, and the revision is derived
+            # from SUSFS_VERSION. One extra field on a query we already make.
+            query="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${ref}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${ref}\") { nodes { rawBlob } } } } }"
             while [ "$attempt" -lt "$MAX_RETRIES" ]; do
               response=$(curl -s --fail -G "https://gitlab.com/api/graphql" --data-urlencode "query=$query") || response=""
               if [ -n "$response" ]; then
                 sha=$(echo "$response" | jq -r '.data.project.repository.ch.sha // empty')
                 if [ -n "$sha" ] && [ "$sha" != "null" ]; then
                   RESOLVED_SHA="$sha"
-                  if [ "${{ inputs.make_release }}" = "true" ]; then
-                    ver=$(echo "$response" \
-                      | jq -r '.data.project.repository.blobs.nodes[0].rawBlob // empty' \
-                      | grep '#define SUSFS_VERSION' | awk -F'"' '{print $2}')
-                    RESOLVED_VERSION="${ver:-unknown}"
-                    echo " $label ($ref) → SUSFS_VERSION = $RESOLVED_VERSION"
-                  fi
+                  ver=$(echo "$response" \
+                    | jq -r '.data.project.repository.blobs.nodes[0].rawBlob // empty' \
+                    | grep '#define SUSFS_VERSION' | awk -F'"' '{print $2}')
+                  RESOLVED_VERSION="${ver:-unknown}"
+                  echo " $label ($ref) → SUSFS_VERSION = $RESOLVED_VERSION"
                   return 0
                 fi
               fi
@@ -568,14 +565,17 @@ jobs:
 
           # SUSFS_VERSION. Always resolved: the zip name carries it and the
           # release revision is derived from it, so a plain build needs it too.
+          # Refs are sorted so the pick is deterministic across runs (bash
+          # associative array order is not).
           susfs_base_version="unknown"
-          for ref in "${!susfs_versions_per_ref[@]}"; do
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
             ver="${susfs_versions_per_ref[$ref]:-unknown}"
             if [ "$ver" != "unknown" ]; then
               susfs_base_version="$ver"
               break
             fi
-          done
+          done < <(printf '%s\n' "${!susfs_versions_per_ref[@]}" | sort)
 
           if [ "$susfs_base_version" = "unknown" ]; then
             if [ "${{ inputs.make_release }}" = "true" ]; then
@@ -771,30 +771,25 @@ jobs:
           elif [ -z "$base" ] || [ "$base" = "unknown" ]; then
             tag=""
             echo "   SUSFS version unresolved, no release tag"
+            echo "::warning::SUSFS_VERSION did not resolve, so the zips will not carry a release revision. Set custom_release_tag to override."
           else
-            latest=$(gh api "repos/${{ github.repository }}/tags" --jq '.[0].name' 2>/dev/null || true)
-            # A failed API call can leave an error blob on stdout. Only trust a
-            # plain tag name; anything else is treated as "no tags yet".
-            if [[ ! "$latest" =~ ^[A-Za-z0-9._-]+$ ]]; then
-              latest=""
-            fi
-            if [ -z "$latest" ]; then
-              tag="${base}-r1"
-            elif [[ "$latest" == *"$base"* ]]; then
-              if [[ "$latest" == *-r* ]]; then
-                rev="${latest##*-r}"
-                if [[ "$rev" =~ ^[0-9]+$ ]]; then
-                  tag="${latest%-r*}-r$((rev + 1))"
-                else
-                  tag="${latest}-r1"
-                fi
-              else
-                tag="${latest}-r1"
-              fi
-            else
-              tag="${base}-r1"
-            fi
-            echo "   latest tag: ${latest:-none}, next: $tag"
+            # Highest existing revision for this base version. Listing every
+            # tag and taking the max is order-independent; the tags endpoint
+            # does not guarantee a sort order, so .[0].name is not "latest".
+            max_rev=0
+            while IFS= read -r name; do
+              [ -n "$name" ] || continue
+              case "$name" in
+                "${base}-r"*)
+                  rev="${name#"${base}-r"}"
+                  if [[ "$rev" =~ ^[0-9]+$ ]] && [ "$rev" -gt "$max_rev" ]; then
+                    max_rev="$rev"
+                  fi
+                  ;;
+              esac
+            done < <(gh api "repos/${{ github.repository }}/tags" --paginate --jq '.[].name' 2>/dev/null || true)
+            tag="${base}-r$((max_rev + 1))"
+            echo "   highest existing revision for $base: ${max_rev}, next: $tag"
           fi
 
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"

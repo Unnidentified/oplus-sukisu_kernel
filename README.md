@@ -17,6 +17,7 @@ No local toolchain needed: pick your device in GitHub Actions, and the kernel is
 - [Supported devices](#supported-devices)
 - [Flashing](#flashing)
 - [Not implemented yet](#not-implemented-yet)
+- [Roadmap](ROADMAP.md)
 - [Notes](#notes)
 - [Credits](#credits)
 
@@ -41,7 +42,7 @@ A device config can override the root branch per device with a `ksu_hash` field.
 
 Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}-r{REV}.zip` (LKM builds add `_LKM`), e.g. `OP15-COS17_android16-6.12.69-SuSFS_v2.3.0-r3.zip`.
 
-The `-r{REV}` is the release revision. It is resolved once in `set-op-model`, before any build starts, from the latest tag plus the SUSFS version, and passed down to every build job. So the artifact name and the release asset name are the same string, and `trigger-release` cannot pick a different tag than the one the zips were built under. A `custom_release_tag` overrides the derivation. If the SUSFS version cannot be resolved the suffix is dropped and the run warns.
+The `-r{REV}` is the release revision. It is resolved once in `set-op-model`, before any build starts, and passed down to every build job. The SUSFS version comes from `susfs.h` at the resolved ref, and the revision is one past the highest existing `{version}-rN` tag. Every tag is listed and the maximum is taken, because the tags endpoint does not guarantee a sort order. So the artifact name and the release asset name are the same string, and `trigger-release` cannot pick a different tag than the one the zips were built under. A `custom_release_tag` overrides the derivation. If the SUSFS version cannot be resolved the suffix is dropped and the run warns.
 
 ---
 
@@ -252,6 +253,8 @@ Things a current Android kernel normally has that this one does not. Listed so t
 | **16 KB page size** | Required for new Android 16+ devices | Not a toggle; changing it breaks every existing binary on the device |
 
 Already on and easy to assume otherwise: `CONFIG_RANDOMIZE_KSTACK_OFFSET` defaults to `y` and both kernel trees select `HAVE_ARCH_RANDOMIZE_KSTACK_OFFSET`, so it is active without appearing in `gki_defconfig`.
+
+[`ROADMAP.md`](ROADMAP.md) carries the rest: what shipped, what was investigated and rejected with the reason, and what is blocked upstream.
 
 ---
 

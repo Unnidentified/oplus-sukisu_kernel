@@ -39,7 +39,9 @@ A device config can override the root branch per device with a `ksu_hash` field.
 
 4. When the run finishes, grab the `{MODEL}_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts.
 
-Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}.zip` (LKM builds add `_LKM`), e.g. `OP15-COS17_android16-6.12.69-SuSFS_v2.3.0.zip`.
+Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}-r{REV}.zip` (LKM builds add `_LKM`), e.g. `OP15-COS17_android16-6.12.69-SuSFS_v2.3.0-r3.zip`.
+
+The `-r{REV}` is the release revision. It is resolved once in `set-op-model`, before any build starts, from the latest tag plus the SUSFS version, and passed down to every build job. So the artifact name and the release asset name are the same string, and `trigger-release` cannot pick a different tag than the one the zips were built under. A `custom_release_tag` overrides the derivation. If the SUSFS version cannot be resolved the suffix is dropped and the run warns.
 
 ---
 
@@ -221,7 +223,7 @@ The A14 and A15 `OP11` profiles are pinned to `8c4fa71` and do build. Fixing the
 Each release lists a `sha256` next to every zip. Check it before flashing:
 
 ```sh
-sha256sum OP15-COS17_android16-6.12.69-SuSFS_v2.3.0.zip
+sha256sum OP15-COS17_android16-6.12.69-SuSFS_v2.3.0-r3.zip
 ```
 
 Every zip also ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, the image/zip checksums, and a `features` block - `lto`, `autofdo` with the profile hash, `damon`, `bore`, `adios`, `mlgo`, and `patchset_commit` for the external patch repo. Two builds of the same version stay distinguishable.

@@ -210,6 +210,7 @@ jobs:
       ksu_resolved_hash: ${{ steps.set-matrix.outputs.ksu_resolved_hash }}
       ksu_options_normalized: ${{ steps.set-matrix.outputs.ksu_options_normalized }}
       susfs_base_version: ${{ steps.set-matrix.outputs.susfs_base_version }}
+      release_tag: ${{ steps.release-tag.outputs.release_tag }}
     env:
       GH_TOKEN: ${{ github.token }}
       GH_HTTP_TIMEOUT: 600
@@ -565,32 +566,36 @@ jobs:
           echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
 
-          # SUSFS_VERSION - only when releasing. Every ref actually compiled in
-          # (defaults and pins alike) must agree, otherwise the release tag
-          # would describe a version that is not in every zip.
-          if [ "${{ inputs.make_release }}" = "true" ]; then
-            susfs_base_version="unknown"
-            for ref in "${!susfs_versions_per_ref[@]}"; do
-              ver="${susfs_versions_per_ref[$ref]:-unknown}"
-              if [ "$ver" != "unknown" ]; then
-                susfs_base_version="$ver"
-                break
-              fi
-            done
+          # SUSFS_VERSION. Always resolved: the zip name carries it and the
+          # release revision is derived from it, so a plain build needs it too.
+          susfs_base_version="unknown"
+          for ref in "${!susfs_versions_per_ref[@]}"; do
+            ver="${susfs_versions_per_ref[$ref]:-unknown}"
+            if [ "$ver" != "unknown" ]; then
+              susfs_base_version="$ver"
+              break
+            fi
+          done
 
-            if [ "$susfs_base_version" = "unknown" ]; then
+          if [ "$susfs_base_version" = "unknown" ]; then
+            if [ "${{ inputs.make_release }}" = "true" ]; then
               echo "::error::Could not extract SUSFS_VERSION from susfs.h for any resolved ref. Cannot proceed with release."
               exit 1
             fi
-
-            # make_release=true: mismatch is a hard error - prevents wrong tag
-            for ref in "${!susfs_versions_per_ref[@]}"; do
-              ref_ver="${susfs_versions_per_ref[$ref]:-unknown}"
-              if [ "$ref_ver" != "$susfs_base_version" ]; then
-                echo "::error::SUSFS version mismatch: ref '$ref' has '$ref_ver', expected '$susfs_base_version'. Align refs before releasing."
-                exit 1
-              fi
-            done
+            echo "::warning::SUSFS_VERSION not resolved; zip names will not carry a release revision."
+          else
+            # make_release=true: every ref compiled in (defaults and pins alike)
+            # must agree, otherwise the release tag would describe a version
+            # that is not in every zip. Compared before the v prefix is added.
+            if [ "${{ inputs.make_release }}" = "true" ]; then
+              for ref in "${!susfs_versions_per_ref[@]}"; do
+                ref_ver="${susfs_versions_per_ref[$ref]:-unknown}"
+                if [ "$ref_ver" != "$susfs_base_version" ]; then
+                  echo "::error::SUSFS version mismatch: ref '$ref' has '$ref_ver', expected '$susfs_base_version'. Align refs before releasing."
+                  exit 1
+                fi
+              done
+            fi
 
             # Ensure v prefix for standardized versioning
             [[ "$susfs_base_version" != v* ]] && susfs_base_version="v$susfs_base_version"
@@ -748,6 +753,53 @@ jobs:
             echo "> ** Android-Kernel Filter:** Only A15 and A16 devices will be built for \`${{ inputs.op_model }}\`" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Resolve release tag
+        id: release-tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Resolve release tag"
+          base="${{ steps.set-matrix.outputs.susfs_base_version }}"
+          custom="${{ inputs.custom_release_tag }}"
+
+          # Resolved once here, before any build starts, so every zip is named
+          # with the revision it will be published under and the release job
+          # cannot pick a different one.
+          if [ -n "$custom" ]; then
+            tag="$custom"
+            echo "   custom tag: $tag"
+          elif [ -z "$base" ] || [ "$base" = "unknown" ]; then
+            tag=""
+            echo "   SUSFS version unresolved, no release tag"
+          else
+            latest=$(gh api "repos/${{ github.repository }}/tags" --jq '.[0].name' 2>/dev/null || true)
+            # A failed API call can leave an error blob on stdout. Only trust a
+            # plain tag name; anything else is treated as "no tags yet".
+            if [[ ! "$latest" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              latest=""
+            fi
+            if [ -z "$latest" ]; then
+              tag="${base}-r1"
+            elif [[ "$latest" == *"$base"* ]]; then
+              if [[ "$latest" == *-r* ]]; then
+                rev="${latest##*-r}"
+                if [[ "$rev" =~ ^[0-9]+$ ]]; then
+                  tag="${latest%-r*}-r$((rev + 1))"
+                else
+                  tag="${latest}-r1"
+                fi
+              else
+                tag="${latest}-r1"
+              fi
+            else
+              tag="${base}-r1"
+            fi
+            echo "   latest tag: ${latest:-none}, next: $tag"
+          fi
+
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+
   mirror_toolchain:
     needs: set-op-model
     if: ${{ inputs.sync_toolchains }}
@@ -841,6 +893,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
           lto_override: ${{ inputs.lto_override }}
+          release_tag: ${{ needs.set-op-model.outputs.release_tag }}
 
   build-A15:
     name: build-A15 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
@@ -896,6 +949,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
           lto_override: ${{ inputs.lto_override }}
+          release_tag: ${{ needs.set-op-model.outputs.release_tag }}
 
   build-A14:
     name: build-A14 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
@@ -951,6 +1005,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ksu_mode: ${{ inputs.ksu_mode }}
           lto_override: ${{ inputs.lto_override }}
+          release_tag: ${{ needs.set-op-model.outputs.release_tag }}
 
   trigger-release:
     needs: [set-op-model, build-A16, build-A15, build-A14]
@@ -969,51 +1024,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate and Create New Tag
+      - name: Create New Tag
         run: |
-          if [ -n "${{ github.event.inputs.custom_release_tag }}" ]; then
-            NEW_TAG="${{ github.event.inputs.custom_release_tag }}"
-            echo " Using custom tag: $NEW_TAG"
-          else
-            # Get the absolute latest tag from the repository
-            LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name' 2>/dev/null || true)
-            
-            if [ -z "$LATEST_TAG" ]; then
-              # No existing tags → start at -r1 for the current version
-              NEW_TAG="${SUSFS_BASE_VERSION}-r1"
-            else
-              echo " Last release tag: $LATEST_TAG"
-              # Check if the last tag contains our current base SUSFS version
-              if [[ "$LATEST_TAG" == *"$SUSFS_BASE_VERSION"* ]]; then
-                if [[ "$LATEST_TAG" == *-r* ]]; then
-                  # Increment Revision: v2.1.0-r1 -> v2.1.0-r2
-                  BASE=$(echo "$LATEST_TAG" | awk -F'-r' '{print $1}')
-                  REV=$(echo "$LATEST_TAG" | awk -F'-r' '{print $2}')
-                  # Ensure REV is a number before incrementing
-                  if [[ "$REV" =~ ^[0-9]+$ ]]; then
-                    NEW_TAG="${BASE}-r$((REV + 1))"
-                  else
-                    NEW_TAG="${LATEST_TAG}-r1"
-                  fi
-                else
-                  # Standard to Revision: v2.1.0 -> v2.1.0-r1
-                  NEW_TAG="${LATEST_TAG}-r1"
-                fi
-              else
-                # New SUSFS version or different base detected, reset to -r1
-                NEW_TAG="${SUSFS_BASE_VERSION}-r1"
-                echo " New version base detected, starting at -r1"
-              fi
-            fi
-            echo "Auto-generated tag: $NEW_TAG"
+          set -euo pipefail
+          # Resolved in set-op-model before the builds started, so the tag and
+          # the zip names cannot disagree.
+          NEW_TAG="${{ needs.set-op-model.outputs.release_tag }}"
+          if [ -z "$NEW_TAG" ]; then
+            echo "::error::No release tag was resolved. Set custom_release_tag, or make sure SUSFS_VERSION resolves."
+            exit 1
+          fi
+          echo "New tag: $NEW_TAG"
+
+          if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
+            echo "::error::Tag $NEW_TAG already exists. Another release landed while this run was building; re-run with a custom_release_tag."
+            exit 1
           fi
 
-          echo "New tag: $NEW_TAG"
           echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag $NEW_TAG
-          git push origin $NEW_TAG
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"
 
       - name: Download Artifacts
         uses: actions/download-artifact@v8
@@ -1034,6 +1066,34 @@ jobs:
           else
             echo " downloaded-artifacts directory does not exist"
           fi
+
+      - name: Check zip names match the tag
+        run: |
+          set -euo pipefail
+          tag_rev=""
+          if [[ "$NEW_TAG" =~ -r([0-9]+)$ ]]; then
+            tag_rev="-r${BASH_REMATCH[1]}"
+          fi
+          echo "Tag $NEW_TAG carries revision '${tag_rev:-none}'"
+
+          mismatched=0
+          for zip in ./downloaded-artifacts/*.zip; do
+            [ -f "$zip" ] || continue
+            name=$(basename "$zip" .zip)
+            zip_rev=""
+            if [[ "$name" =~ -r([0-9]+)$ ]]; then
+              zip_rev="-r${BASH_REMATCH[1]}"
+            fi
+            if [ -z "$zip_rev" ]; then
+              echo "::warning::$name carries no release revision, but the tag is $NEW_TAG"
+            elif [ "$zip_rev" != "$tag_rev" ]; then
+              echo "::error::$name says $zip_rev but the tag says ${tag_rev:-none}"
+              mismatched=1
+            else
+              echo "   $name matches $tag_rev"
+            fi
+          done
+          [ "$mismatched" -eq 0 ] || exit 1
 
       - name: Generate Device List and Final Release Notes
         id: generate-notes

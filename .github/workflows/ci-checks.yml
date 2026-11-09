@@ -63,7 +63,16 @@ jobs:
             fi
           done < <(jq -r '.[].model' /tmp/matrix.json | sort -u)
 
-          echo "matrix generation ok: $total profiles"
+          # Blocked profiles are dropped from the build matrix. Dropping them
+          # must leave something to build: a matrix where every profile is
+          # blocked would make every dispatch fail.
+          buildable=$(jq '[.[] | select(.blocked? == null)] | length' /tmp/matrix.json)
+          if [ "$buildable" -eq 0 ]; then
+            echo "::error::every profile is blocked; nothing can be built"
+            exit 1
+          fi
+
+          echo "matrix generation ok: $total profiles, $(jq '[.[] | select(.blocked? != null)] | length' /tmp/matrix.json) blocked, $buildable buildable"
 
       - name: Validate workflow and action YAML
         run: |
@@ -208,6 +217,10 @@ jobs:
               if path.endswith("schema.json"):
                   continue
               cfg = json.load(open(path))
+              # A blocked profile cannot be built, so a dry-run of its patch
+              # sequence only reports the blocker we already know about.
+              if cfg.get("blocked"):
+                  continue
               # Profiles whose build applies a patch we maintain in this repo.
               if cfg.get("bore") or cfg.get("adios") or cfg.get("autofdo") or cfg.get("susfs_hash"):
                   entries.append({"label": cfg["model"], "config": path, "blocking": True})
@@ -219,6 +232,8 @@ jobs:
               if path.endswith("schema.json"):
                   continue
               cfg = json.load(open(path))
+              if cfg.get("blocked"):
+                  continue
               if not cfg.get("susfs") or cfg.get("susfs_hash"):
                   continue
               key = f"{cfg['android_version']}-{cfg['kernel_version']}"

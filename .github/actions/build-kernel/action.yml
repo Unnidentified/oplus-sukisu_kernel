@@ -122,7 +122,11 @@ runs:
       run: |
         set -euo pipefail
         echo '${{ inputs.op_config_json }}' > /tmp/config.json
-        jq -r 'to_entries[] | "OP_\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "$GITHUB_ENV"
+        # 'blocked' and 'tested' are documentation for the matrix and the
+        # release notes, not build inputs. Skipped here so a free-text reason
+        # never lands in GITHUB_ENV.
+        jq -r 'to_entries[] | select(.key != "blocked" and .key != "tested")
+               | "OP_\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "$GITHUB_ENV"
         # 'config' is the dispatch default and means "use the device's own
         # setting". Normalise it to empty here rather than in the workflow
         # expression: `cond && '' || value` returns `value` when the branch is

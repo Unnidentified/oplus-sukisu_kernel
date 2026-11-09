@@ -13,6 +13,10 @@ Two layers:
    - the file stem matches model (the matrix and the zip name both use model)
    - the referenced manifest exists
    - the containing directory matches os_version
+   - a profile is not both blocked and tested (a blocked profile cannot have
+     been flashed)
+   - the README's known-unbuildable table lists exactly the blocked profiles,
+     so the prose cannot drift away from the configs
 
 Exit code 0 when everything passes, 1 otherwise.
 """
@@ -27,6 +31,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIGS = os.path.join(ROOT, "configs")
 SCHEMA = os.path.join(CONFIGS, "schema.json")
+README = os.path.join(ROOT, "README.md")
+BLOCKED_HEADING = "### Known-unbuildable profiles"
 
 TYPES = {
     "object": dict,
@@ -81,12 +87,41 @@ def validate(value, schema, path, errors):
                 validate(value[key], sub, f"{path}.{key}", errors)
 
 
+def readme_blocked_configs() -> set[str] | None:
+    """Config paths listed in the README's known-unbuildable section.
+
+    Returns None when the section is missing, so a rename of the heading is
+    reported instead of silently disabling the cross-check.
+    """
+    try:
+        with open(README, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return None
+
+    try:
+        start = lines.index(BLOCKED_HEADING)
+    except ValueError:
+        return None
+
+    paths: set[str] = set()
+    for line in lines[start + 1:]:
+        if line.startswith("## ") or line.startswith("### ") or line.strip() == "---":
+            break
+        for token in re.findall(r"`([^`]+)`", line):
+            if token.startswith("configs/") and token.endswith(".json"):
+                paths.add(token)
+    return paths
+
+
 def main() -> int:
     with open(SCHEMA, encoding="utf-8") as fh:
         schema = json.load(fh)
 
     errors: list[str] = []
     seen_models: dict[tuple[str, str], str] = {}
+    blocked_configs: set[str] = set()
+    tested_models: set[str] = set()
     checked = 0
 
     for dirpath, _dirnames, filenames in os.walk(CONFIGS):
@@ -137,6 +172,44 @@ def main() -> int:
                         f"os_version {os_version!r}"
                     )
 
+            blocked = cfg.get("blocked")
+            tested = cfg.get("tested")
+            if isinstance(blocked, str) and isinstance(tested, str):
+                errors.append(
+                    f"{rel}: both 'blocked' and 'tested' are set. A profile that "
+                    f"cannot be built cannot have been flashed."
+                )
+            # Both fields are rendered into markdown table cells: the build
+            # summary for 'blocked', the release notes for 'tested'. A pipe
+            # would split the row, and a newline would break the table.
+            for field, value in (("blocked", blocked), ("tested", tested)):
+                if isinstance(value, str) and "|" in value:
+                    errors.append(f"{rel}: {field!r} must not contain '|'")
+                if isinstance(value, str) and "\n" in value:
+                    errors.append(f"{rel}: {field!r} must be a single line")
+            if isinstance(blocked, str):
+                blocked_configs.add(rel)
+            if isinstance(tested, str) and isinstance(model, str):
+                tested_models.add(model)
+
+    documented = readme_blocked_configs()
+    if documented is None:
+        errors.append(
+            f"README.md: no '{BLOCKED_HEADING}' section, so the blocked profiles "
+            f"cannot be cross-checked against the prose"
+        )
+    else:
+        for path in sorted(blocked_configs - documented):
+            errors.append(
+                f"README.md: {path!r} is blocked in its config but missing from "
+                f"the known-unbuildable list"
+            )
+        for path in sorted(documented - blocked_configs):
+            errors.append(
+                f"README.md: {path!r} is listed as unbuildable but its config has "
+                f"no 'blocked' field"
+            )
+
     if errors:
         print(f"config validation failed ({len(errors)} problem(s)):", file=sys.stderr)
         for err in errors:
@@ -144,6 +217,10 @@ def main() -> int:
         return 1
 
     print(f"config validation passed ({checked} profiles)")
+    if blocked_configs:
+        print(f"  blocked: {len(blocked_configs)} profile(s)")
+    if tested_models:
+        print(f"  tested on hardware: {', '.join(sorted(tested_models))}")
     return 0
 
 

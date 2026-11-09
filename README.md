@@ -212,15 +212,109 @@ If you are on OxygenOS 16 with a `6.12.23-android16-5` kernel, `OP15` is your pr
 
 ### Known-unbuildable profiles
 
-These configs are present but cannot currently be built: no commit on the matching `susfs4ksu` branch has a `50_add_susfs` patch that applies to their kernel base. The CI patch dry-run reports them as warnings rather than failures.
+72 of 159 profiles cannot be built today. The cause is the same for all of them: the `susfs4ksu` branch for that KMI has been rebased onto a newer kernel, so its `50_add_susfs` patch no longer matches the OnePlus tree the profile pins. The build aborts on the leftover `.rej` rather than shipping a kernel with SUSFS hooks missing.
 
-| Profile | KMI | Failing files |
+| KMI | Blocked | Failing files |
 |---|---|---|
-| `OP-ACE-3-PRO` | android14-6.1 | `fs/namespace.c`, `fs/proc/base.c` |
-| `OP-ACE-5-PRO-6.6.30` | android15-6.6 | `fs/namespace.c`, `fs/proc/base.c` |
-| `OP11` (A16 / `oneplus_11_w.xml`) | android13-5.15 | `fs/namespace.c`, `fs/proc/task_mmu.c` |
+| `android13-5.15` | 21 | `fs/namespace.c`, `fs/proc/task_mmu.c` |
+| `android14-6.1` | 51 | `fs/namespace.c` |
 
-The A14 and A15 `OP11` profiles are pinned to `8c4fa71` and do build. Fixing the rest needs either a SUSFS patch rebased onto those bases or version-specific fixups in the build - neither exists today.
+Every other KMI builds. `android15-6.6` and `android16-6.12` were on this list until `scripts/check-patches.sh` was taught to reproduce the build's pre-patches: the dry-run was reporting rejects the build never sees, because the build edits a few vendor files before applying the SUSFS patch. Two profiles the old table named, `OP-ACE-5-PRO-6.6.30` and the A16 `OP11`, build fine and are no longer blocked.
+
+Each blocked profile carries a `blocked` field with the reason. The build matrix drops them, so selecting a model family builds the siblings that work instead of failing the whole run; the skipped profiles are listed in the run summary. Selecting a model whose every profile is blocked fails immediately with the reason rather than 20 minutes into a patch step. `scripts/validate-configs.py` checks that this list and the `blocked` fields agree, and `scripts/sweep-patches.sh` re-derives the whole thing from scratch.
+
+<details>
+<summary>All 72 blocked profiles</summary>
+
+**`android13-5.15`**
+
+- `configs/a15/OP-ACE-2-PRO-5.15.149.json`
+- `configs/a15/OP-ACE-2-PRO.json`
+- `configs/a15/OP-ACE-3-5.15.149.json`
+- `configs/a15/OP-ACE-3.json`
+- `configs/a15/OP-NORD-4-CE-5.15.149.json`
+- `configs/a15/OP-NORD-4-CE-5.15.167.json`
+- `configs/a15/OP-NORD-4-CE.json`
+- `configs/a15/OP-OPEN-5.15.149.json`
+- `configs/a15/OP-OPEN.json`
+- `configs/a15/OP11-5.15.149.json`
+- `configs/a15/OP12r-5.15.149.json`
+- `configs/a15/OP12r.json`
+- `configs/a16/OP-ACE-2-PRO.json`
+- `configs/a16/OP-ACE-3-5.15.167.json`
+- `configs/a16/OP-ACE-3.json`
+- `configs/a16/OP-N6.json`
+- `configs/a16/OP-NORD-4-CE.json`
+- `configs/a16/OP-OPEN-5.15.167.json`
+- `configs/a16/OP-OPEN.json`
+- `configs/a16/OP11-5.15.167.json`
+- `configs/a16/OP12r-5.15.167.json`
+
+**`android14-6.1`**
+
+- `configs/a14/OP-ACE-3-PRO.json`
+- `configs/a14/OP-PAD-PRO.json`
+- `configs/a14/OP12.json`
+- `configs/a15/OP-ACE-3-PRO-6.1.75.json`
+- `configs/a15/OP-ACE-3-PRO.json`
+- `configs/a15/OP-ACE-3V-6.1.75.json`
+- `configs/a15/OP-ACE-3V.json`
+- `configs/a15/OP-ACE-5-6.1.75.json`
+- `configs/a15/OP-ACE-5-RACE.json`
+- `configs/a15/OP-ACE-5.json`
+- `configs/a15/OP-NORD-4-6.1.75.json`
+- `configs/a15/OP-NORD-4.json`
+- `configs/a15/OP-NORD-5.json`
+- `configs/a15/OP-NORD-CE-5.json`
+- `configs/a15/OP-NORD-CE4-LITE.json`
+- `configs/a15/OP-PAD-2-SM8650-6.1.75.json`
+- `configs/a15/OP-PAD-2-SM8650.json`
+- `configs/a15/OP-PAD-3-MT6897-6.1.75.json`
+- `configs/a15/OP-PAD-3-MT6897.json`
+- `configs/a15/OP-PAD-PRO-6.1.75.json`
+- `configs/a15/OP-PAD-PRO.json`
+- `configs/a15/OP12-6.1.75.json`
+- `configs/a15/OP12.json`
+- `configs/a15/OP13r-6.1.75.json`
+- `configs/a15/OP13r.json`
+- `configs/a16/OP-ACE-3-PRO-6.1.118.json`
+- `configs/a16/OP-ACE-3-PRO.json`
+- `configs/a16/OP-ACE-3V-6.1.118.json`
+- `configs/a16/OP-ACE-3V.json`
+- `configs/a16/OP-ACE-5-6.1.118.json`
+- `configs/a16/OP-ACE-5-RACE-6.1.134.json`
+- `configs/a16/OP-ACE-5-RACE.json`
+- `configs/a16/OP-ACE-5.json`
+- `configs/a16/OP-NORD-4-6.1.118.json`
+- `configs/a16/OP-NORD-5-6.1.118.json`
+- `configs/a16/OP-NORD-CE-5-6.1.134.json`
+- `configs/a16/OP-NORD-CE-5.json`
+- `configs/a16/OP-NORD-CE4-LITE-6.1.118.json`
+- `configs/a16/OP-NORD-CE4-LITE.json`
+- `configs/a16/OP-NORD-CE6-LITE.json`
+- `configs/a16/OP-PAD-2-SM8650.json`
+- `configs/a16/OP-PAD-3-MT6897.json`
+- `configs/a16/OP-PAD-GO-2.json`
+- `configs/a16/OP-PAD-PRO.json`
+- `configs/a16/OP-TURBO-6V-6.1.118.json`
+- `configs/a16/OP-TURBO-6V.json`
+- `configs/a16/OP-TURBO-6X.json`
+- `configs/a16/OP12-6.1.118.json`
+- `configs/a16/OP12.json`
+- `configs/a16/OP13r-6.1.118.json`
+- `configs/a16/OP13r.json`
+
+</details>
+
+### Tested on hardware
+
+A green build proves a profile compiles, not that it boots. Profiles carry a `tested` field once someone has flashed them, and the release notes list those separately from the rest.
+
+| Profile | What was verified |
+|---|---|
+| `OP15` | v2.2.0 on OxygenOS 16 (6.12.23): flashed, booted, used as a daily driver. Not a full subsystem pass |
+
+Everything else is compile-verified only. If you flash one and it works, the useful thing to send back is the profile name, the build tag, and which of boot, suspend/resume, camera, modem, Wi-Fi and thermals you actually exercised.
 
 ---
 

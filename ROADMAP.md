@@ -27,6 +27,7 @@ that trades correctness, debuggability or battery for a synthetic score is out.
 | Kernel | BORE applied with `-F0`, both 6.12.23 hunks adapted | #41 |
 | Release | Zips named with the release revision | #42 |
 | Debug | KASAN off by default, `kasan` profile field, two build-time guards | #43 |
+| Gates | `check-patches.sh` reproduces the build's pre-patches; `sweep-patches.sh` checks every profile; `blocked` and `tested` profile fields; weekly sweep workflow | #45 |
 
 ---
 
@@ -56,6 +57,29 @@ re-litigate without new evidence.
 ---
 
 ## Blocked upstream
+
+### SUSFS patch drift on android14-6.1 and android13-5.15
+
+72 of 159 profiles cannot build. Every one of them fails for the same reason:
+the `susfs4ksu` branch for that KMI has been rebased onto a newer kernel, so its
+`50_add_susfs` patch no longer matches the OnePlus tree the profile pins.
+
+| KMI | Blocked | Failing files | Branch rebased onto |
+|---|---|---|---|
+| `android14-6.1` | 51 | `fs/namespace.c` | 6.1.176 |
+| `android13-5.15` | 21 | `fs/namespace.c`, `fs/proc/task_mmu.c` | 5.15.180 |
+
+The `android14-6.1` failure is a context line: the patch expects
+`#include <trace/hooks/blk.h>` in `fs/namespace.c`, which the OnePlus 6.1 trees
+do not have. Adding it is not enough, because `fs/proc_namespace.c` fails
+outright as well. Walking the branch back 25 commits does not find a version
+that applies either, so there is no pin to fall back on the way `OP11` pins
+`8c4fa71`.
+
+**Revisit when** a `susfs4ksu` commit lands whose patch applies to these bases,
+or when the profiles move to a newer OnePlus tree. `scripts/sweep-patches.sh`
+re-derives the list, and the weekly `Patch Sweep` workflow reports when it
+changes.
 
 ### `CONFIG_SCHED_CLUSTER`
 

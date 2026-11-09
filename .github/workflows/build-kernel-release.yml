@@ -315,6 +315,32 @@ jobs:
             jq -r '.[] | " - \(.model) (\(.os_version), \(.android_version)-\(.kernel_version))"' matrix.json
             exit 1
           fi
+
+          # A profile carrying a 'blocked' reason cannot be built: no SUSFS patch
+          # applies to its base. Drop it from the matrix so selecting a model
+          # family builds the siblings that do work instead of failing the whole
+          # run. If the selection resolves to nothing but blocked profiles, say
+          # why here instead of 20 minutes into a build.
+          blocked=$(jq -c '[.[] | select(.blocked? != null)]' <<<"$filtered")
+          blocked_count=$(jq 'length' <<<"$blocked")
+          if [ "$blocked_count" -gt 0 ]; then
+            filtered=$(jq -c '[.[] | select(.blocked? == null)]' <<<"$filtered")
+            count=$(jq 'length' <<<"$filtered")
+            echo " Skipping $blocked_count blocked profile(s):"
+            jq -r '.[] | "   \(.model) (\(.os_version), \(.android_version)-\(.kernel_version)): \(.blocked)"' <<<"$blocked"
+            {
+              echo ""
+              echo "### Skipped: blocked profiles"
+              echo ""
+              echo "| Profile | KMI | Reason |"
+              echo "|---|---|---|"
+              jq -r '.[] | "| `\(.model)` | \(.android_version)-\(.kernel_version) | \(.blocked) |"' <<<"$blocked"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$count" -eq 0 ]; then
+              echo "::error::Every profile matching '$input' is blocked. Nothing to build."
+              exit 1
+            fi
+          fi
           
           echo "$filtered" | jq '.' > matrix.json
           
@@ -1173,6 +1199,26 @@ jobs:
             echo "- [\`${zipname}.zip\`](${DOWNLOAD_URL}) - ${model}, ${os_ver}, kernel \`${kernel_ver}\`" >> release_notes.md
             echo "  - \`sha256: ${zip_sha}\`" >> release_notes.md
           done
+
+          # Which of these zips has anyone actually flashed. A green build proves
+          # it compiles, not that it boots, so say which is which instead of
+          # letting the release imply every zip is equally proven.
+          tested_rows=$(jq -r '.[] | select(.tested? != null) | [.model, .os_version, .tested] | @tsv' <<<"$JSON_BUILD_DATA" 2>/dev/null || true)
+          cat << EOF >> release_notes.md
+
+          ## Tested on hardware
+
+          EOF
+          if [ -n "$tested_rows" ]; then
+            echo "| Profile | OS | What was verified |" >> release_notes.md
+            echo "|---|---|---|" >> release_notes.md
+            while IFS=$'\t' read -r t_model t_os t_note; do
+              [ -n "$t_model" ] || continue
+              echo "| \`${t_model}\` | ${t_os} | ${t_note} |" >> release_notes.md
+            done <<< "$tested_rows"
+            echo "" >> release_notes.md
+          fi
+          echo "Every other zip in this release is compile-verified only. It built, it was not flashed. Treat the first boot as the test." >> release_notes.md
 
           cat << EOF >> release_notes.md
 
